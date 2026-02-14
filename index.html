@@ -1,1 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Habeas</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<style>
+:root {
+  --bg:#f4f4f5;--bg2:#e4e4e7;--sf:#fff;--sf2:#fafafa;
+  --bd:#e4e4e7;--bd2:#d4d4d8;
+  --ink:#09090b;--ink2:#3f3f46;--ink3:#71717a;--ink4:#a1a1aa;
+  --ac:#2563eb;--ac2:#1d4ed8;--acbg:#eff6ff;--acbd:#bfdbfe;
+  --red:#dc2626;--redbg:#fef2f2;--green:#16a34a;--greenbg:#f0fdf4;
+  --orange:#ea580c;--orangebg:#fff7ed;--yellow:#ca8a04;--purple:#7c3aed;
+  --r:6px;--sh:0 1px 2px rgba(0,0,0,.05);--sh2:0 4px 12px rgba(0,0,0,.08);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:13px;line-height:1.5}
+button{font-family:inherit;cursor:pointer}
+input,select,textarea{font-family:inherit;font-size:13px;color:var(--ink)}
+a{color:var(--ac);text-decoration:none}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-thumb{background:#d4d4d8;border-radius:3px}
+#shell{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+.topbar{height:44px;background:var(--ink);display:flex;align-items:center;gap:0;padding:0 12px;flex-shrink:0;z-index:50}
+.topbar .logo{font-weight:800;font-size:14px;color:#fff;margin-right:12px;letter-spacing:-.3px;display:flex;align-items:center;gap:6px;flex-shrink:0}
+.topbar .logo svg{width:18px;height:18px;fill:none;stroke:#818cf8;stroke-width:2}
+#tabs{display:flex;align-items:center;gap:0;height:44px;flex-shrink:0}
+.tab{height:44px;display:flex;align-items:center;gap:5px;padding:0 14px;background:none;border:none;color:#a1a1aa;font-size:12px;font-weight:600;border-bottom:2px solid transparent;transition:color .15s,border-color .15s;white-space:nowrap}
+.tab:hover{color:#d4d4d8}
+.tab.on{color:#fff;border-bottom-color:#818cf8}
+.tab .ct{background:#ef4444;color:#fff;font-size:9px;font-weight:800;padding:1px 5px;border-radius:99px;min-width:16px;text-align:center}
+.topbar .right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-shrink:0}
+.topbar .user{font-size:11px;color:#71717a}
+.topbar .cfgbtn{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:#a1a1aa;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.topbar .cfgbtn:hover{background:rgba(255,255,255,.14)}
+.body{flex:1;overflow-y:auto;padding:16px 20px 40px}
+.view{display:none}.view.on{display:block}
+.card{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);box-shadow:var(--sh)}
+.chd{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--ink4)}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:5px;font-size:12px;font-weight:600;border:1px solid var(--bd);background:var(--sf);color:var(--ink2);transition:.1s}
+.btn:hover{background:var(--sf2);border-color:var(--bd2)}
+.btn-ac{background:var(--ac);color:#fff;border-color:var(--ac)}.btn-ac:hover{background:var(--ac2)}
+.btn-sm{padding:3px 8px;font-size:11px}
+.fld{margin-bottom:10px}
+.fld label{display:block;font-size:11px;font-weight:600;color:var(--ink3);margin-bottom:2px}
+.fld label code{font-size:9px;background:var(--ink);color:#d4d4d8;padding:1px 4px;border-radius:3px;margin-left:3px;font-weight:400}
+.fld input,.fld select,.fld textarea{width:100%;padding:6px 8px;border:1px solid var(--bd);border-radius:4px;background:var(--sf)}
+.fld input:focus,.fld select:focus,.fld textarea:focus{outline:none;border-color:var(--ac);box-shadow:0 0 0 2px var(--acbg)}
+.fld textarea{resize:vertical;min-height:48px}
+.stg{display:inline-block;padding:1px 7px;border-radius:99px;font-size:10px;font-weight:700;color:#fff;white-space:nowrap}
+.loading{text-align:center;padding:48px;color:var(--ink4)}
+.empty{text-align:center;padding:48px;color:var(--ink4);font-size:13px}
+.pstrip{display:flex;height:6px;border-radius:3px;overflow:hidden;margin-bottom:16px;gap:1px}
+.pstrip .s{transition:width .3s}
+.kanban{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;align-items:flex-start}
+.kcol{width:230px;min-width:230px;flex-shrink:0}
+.kchd{display:flex;align-items:center;justify-content:space-between;padding:6px 8px;font-size:11px;font-weight:700;color:var(--ink3);border-bottom:2px solid var(--bd);margin-bottom:6px}
+.kchd .dot{width:8px;height:8px;border-radius:99px}
+.kc{background:var(--sf);border:1px solid var(--bd);border-radius:5px;padding:8px 10px;margin-bottom:5px;cursor:pointer;transition:.1s;border-left:3px solid transparent}
+.kc:hover{border-color:var(--ac);box-shadow:var(--sh2)}
+.kc .kn{font-size:12px;font-weight:600;margin-bottom:3px}
+.kc .km{font-size:10px;color:var(--ink4);display:flex;gap:6px;flex-wrap:wrap}
+.kd{font-size:10px;font-weight:700;padding:0 4px;border-radius:3px}
+.kd.ok{background:var(--greenbg);color:#166534}
+.kd.wn{background:var(--orangebg);color:#9a3412}
+.kd.bd{background:var(--redbg);color:#991b1b}
+.mt{width:100%;border-collapse:collapse}
+.mt th{text-align:left;padding:7px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--ink4);border-bottom:2px solid var(--bd)}
+.mt td{padding:7px 10px;border-bottom:1px solid var(--bg);font-size:12px}
+.mt tbody tr{cursor:pointer;transition:.05s}
+.mt tbody tr:hover td{background:var(--acbg)}
+.ew{display:flex;gap:16px;align-items:flex-start}
+.es{width:340px;min-width:340px;max-height:calc(100vh - 120px);overflow-y:auto;position:sticky;top:0}
+.ess{padding:12px 14px;border-bottom:1px solid var(--bd)}
+.ess .chd{margin-bottom:10px}
+.em{flex:1;min-width:0}
+.ebar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.ebar .sp{flex:1}
+.doc{background:#fff;padding:56px 64px;box-shadow:var(--sh);border:1px solid var(--bd);border-radius:2px;min-height:700px;font-family:'Times New Roman',Georgia,serif;font-size:13.5px;line-height:1.85;color:#1a1a1a}
+.doc .ch{text-align:center;font-weight:700;font-size:13.5px;margin-bottom:20px;line-height:1.5}
+.doc .dt{text-align:center;font-weight:700;text-decoration:underline;margin:20px 0;font-size:14px}
+.doc p{margin-bottom:11px;text-align:justify;text-indent:32px}
+.doc p.ni{text-indent:0}
+.doc .sh{font-weight:700;text-align:center;text-transform:uppercase;letter-spacing:.8px;font-size:12px;margin:18px 0 10px;text-indent:0}
+.doc .cnt{font-weight:700;text-align:center;margin:18px 0 3px;text-indent:0}
+.doc .cnts{text-align:center;font-style:italic;margin-bottom:10px;text-indent:0}
+.doc em{font-style:italic}
+.doc .sig{margin-top:28px}
+.doc .cap-tbl{width:100%;border-collapse:collapse;font-size:13.5px;margin-bottom:8px}
+.doc .cap-tbl td{padding:1px 4px;vertical-align:top}
+.doc .cap-left{width:55%}
+.doc .cap-right{width:10%;text-align:center}
+.doc .cap-case{width:35%;padding-left:12px}
+.doc .plist{margin:8px 0 8px 48px;text-indent:0}
+.doc .plist p{text-indent:0;margin-bottom:6px}
+.vs{background:#fefce8;border-bottom:2px solid #facc15;padding:0 2px;border-radius:2px;transition:background .2s}
+.vs.ok{background:#dcfce7;border-bottom-color:#22c55e}
+.vs:empty::before{content:attr(data-p);color:#a16207;font-style:italic;font-size:12px}
+.kpirow{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.kpi{flex:1 1 170px;padding:14px 16px;border-top:3px solid var(--ac)}
+.kpi .kl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--ink4)}
+.kpi .kv{font-size:28px;font-weight:800;line-height:1.1;margin-top:2px}
+.kpi .ks{font-size:11px;color:var(--ink4);margin-top:1px}
+.dg{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+@media(max-width:860px){.dg{grid-template-columns:1fr}}
+.br{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.br .bl{width:90px;font-size:11px;color:var(--ink3);text-align:right;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.br .bt{flex:1;background:var(--bg);border-radius:3px;height:18px;overflow:hidden}
+.br .bf{height:100%;border-radius:3px;transition:width .3s;display:flex;align-items:center;justify-content:flex-end;padding-right:5px;font-size:9px;font-weight:700;color:#fff}
+.ig{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+@media(max-width:600px){.ig{grid-template-columns:1fr}}
+.ifl{grid-column:1/-1}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:flex;align-items:center;justify-content:center}
+.modal.hide{display:none}
+.mbox{background:#fff;border-radius:10px;padding:24px;max-width:440px;width:92%;box-shadow:var(--sh2)}
+.mbox h3{font-size:15px;font-weight:700;margin-bottom:2px}
+.mbox .sub{font-size:12px;color:var(--ink4);margin-bottom:16px}
+@media print{
+  .topbar,.es,.ebar{display:none!important}
+  .ew{display:block!important}
+  .doc{box-shadow:none;border:none;padding:40px 54px}
+  .vs{background:none!important;border:none!important}
+}
+</style>
+</head>
+<body>
+<div id="shell">
+<div class="topbar">
+  <div class="logo">
+    <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+    Habeas
+  </div>
+  <div id="tabs"></div>
+  <div class="right">
+    <span class="user" id="uDisp"></span>
+    <button class="cfgbtn" onclick="cfgShow()">&#9881; Config</button>
+  </div>
+</div>
+<div class="body">
+  <div class="view" id="v-pipeline"></div>
+  <div class="view" id="v-matters"></div>
+  <div class="view" id="v-editor"></div>
+  <div class="view" id="v-dashboard"></div>
+  <div class="view" id="v-intake"></div>
+</div>
+</div>
+<div class="modal hide" id="cfgModal">
+  <div class="mbox">
+    <h3>Configuration</h3>
+    <p class="sub">Enter your n8n webhook production URL. Saved in this browser.</p>
+    <div class="fld"><label>Webhook URL</label><input id="cfgUrl" placeholder="https://your-n8n.com/webhook/habeas"></div>
+    <div style="display:flex;gap:6px;margin-top:16px">
+      <button class="btn btn-ac" onclick="cfgSave()">Save</button>
+      <button class="btn" onclick="cfgHide()">Cancel</button>
+    </div>
+  </div>
+</div>
 
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   PETITION TEMPLATE — Alt-worded § 2241 habeas corpus petition.
+   Hardcoded fallback; Airtable/n8n templates override when present.
+   ═══════════════════════════════════════════════════════════════ */
+const PETITION_TPL=`
+<div class="ch">
+UNITED STATES DISTRICT COURT<br>
+FOR THE {{DISTRICT_FULL}}<br>
+{{DIVISION}}
+</div>
+<table class="cap-tbl">
+<tr><td class="cap-left">{{PETITIONER_NAME}},</td><td class="cap-right">)</td><td class="cap-case"></td></tr>
+<tr><td class="cap-left" style="padding-left:48px"><em>Petitioner-Plaintiff,</em></td><td class="cap-right">)</td><td class="cap-case"></td></tr>
+<tr><td class="cap-left"></td><td class="cap-right">)</td><td class="cap-case"></td></tr>
+<tr><td class="cap-left" style="padding-left:24px">v.</td><td class="cap-right">)</td><td class="cap-case">C/A No. {{CASE_NUMBER}}</td></tr>
+<tr><td class="cap-left"></td><td class="cap-right">)</td><td class="cap-case"></td></tr>
+<tr><td class="cap-left">{{WARDEN_NAME}}, in his official capacity as</td><td class="cap-right">)</td><td class="cap-case" style="font-weight:700">PETITION FOR WRIT OF</td></tr>
+<tr><td class="cap-left" style="padding-left:24px">Warden of {{DETENTION_FACILITY}};</td><td class="cap-right">)</td><td class="cap-case" style="font-weight:700">HABEAS CORPUS AND</td></tr>
+<tr><td class="cap-left">{{FOD_NAME}}, in his official capacity as</td><td class="cap-right">)</td><td class="cap-case" style="font-weight:700">COMPLAINT FOR</td></tr>
+<tr><td class="cap-left" style="padding-left:24px">Field Office Director of the {{FIELD_OFFICE}}</td><td class="cap-right">)</td><td class="cap-case" style="font-weight:700">DECLARATORY AND</td></tr>
+<tr><td class="cap-left" style="padding-left:24px">of Enforcement and Removal Operations,</td><td class="cap-right">)</td><td class="cap-case" style="font-weight:700">INJUNCTIVE RELIEF</td></tr>
+<tr><td class="cap-left" style="padding-left:24px">U.S. Immigration and Customs Enforcement;</td><td class="cap-right">)</td><td class="cap-case"></td></tr>
+<tr><td class="cap-left">U.S. Department of Homeland Security;</td><td class="cap-right">)</td><td class="cap-case"></td></tr>
+<tr><td class="cap-left">{{ICE_DIRECTOR}}, in his official capacity as</td><td class="cap-right">)</td><td class="cap-case"></td></tr>
+<tr><td class="cap-left" style="padding-left:24px">Acting Director, Immigration and Customs</td><td class="cap-right">)</td><td class="cap-case"></td></tr>
+<tr><td class="cap-left" style="padding-left:24px">Enforcement, U.S. Department of Homeland</td><td class="cap-right">)</td><td class="cap-case"></td></tr>
+<tr><td class="cap-left" style="padding-left:24px">Security;</td><td class="cap-right">)</td><td class="cap-case"></td></tr>
+<tr><td class="cap-left">{{DHS_SECRETARY}}, in her official capacity as</td><td class="cap-right">)</td><td class="cap-case"></td></tr>
+<tr><td class="cap-left" style="padding-left:24px">Secretary, U.S. Department of Homeland</td><td class="cap-right">)</td><td class="cap-case"></td></tr>
+<tr><td class="cap-left" style="padding-left:24px">Security; and</td><td class="cap-right">)</td><td class="cap-case"></td></tr>
+<tr><td class="cap-left">{{AG_NAME}}, in her official capacity as</td><td class="cap-right">)</td><td class="cap-case"></td></tr>
+<tr><td class="cap-left" style="padding-left:24px">Attorney General of the United States;</td><td class="cap-right">)</td><td class="cap-case"></td></tr>
+<tr><td class="cap-left"></td><td class="cap-right">)</td><td class="cap-case"></td></tr>
+<tr><td class="cap-left" style="padding-left:48px"><em>Respondents-Defendants.</em></td><td class="cap-right">)</td><td class="cap-case"></td></tr>
+</table>
+<div style="border-bottom:1px solid #000;margin:4px 0 20px"></div>
+
+<div class="sh">INTRODUCTION</div>
+
+<p>1. Petitioner-Plaintiff {{PETITIONER_NAME}} (\u201cPetitioner\u201d) is a citizen of {{PETITIONER_COUNTRY}} who has made his home in the United States for {{YEARS_RESIDENCE}} years. On information and belief, officers of Immigration and Customs Enforcement (\u201cICE\u201d) apprehended Petitioner near his residence in {{APPREHENSION_LOCATION}} on or about {{APPREHENSION_DATE}}.</p>
+
+<p>2. Petitioner is presently held at the {{DETENTION_FACILITY}} in {{FACILITY_LOCATION}}.</p>
+
+<p>3. On September 5, 2025, the Board of Immigration Appeals (\u201cBIA\u201d) issued a precedential ruling that fundamentally reinterpreted provisions of the Immigration and Nationality Act (\u201cINA\u201d). <em>See Matter of Yajure Hurtado</em>, 29 I&amp;N Dec. 216 (BIA 2025). Before this ruling, noncitizens situated like Petitioner\u2014individuals with longstanding ties to the United States who were taken into custody by ICE within the nation\u2019s interior\u2014were held under 8 U.S.C. \u00a7 1226(a) and could request bond hearings before Immigration Judges (\u201cIJs\u201d). Under the BIA\u2019s revised interpretation, however, Petitioner is now classified as subject to mandatory detention pursuant to 8 U.S.C. \u00a7 1225(b)(2)(A) and is afforded no mechanism for release on bond while removal proceedings remain pending.</p>
+
+<p>4. Petitioner\u2019s confinement under \u00a7 1225(b)(2)(A) contravenes the plain text of the INA and the regulations that implement it. A person who has lived in this country for {{YEARS_RESIDENCE}} years and was taken into custody far from any border cannot reasonably be characterized as an \u201capplicant for admission\u201d who is \u201cseeking admission.\u201d Petitioner\u2019s detention should instead be governed by 8 U.S.C. \u00a7 1226(a), which provides for the possibility of release on conditional parole or bond.</p>
+
+<p>5. Petitioner asks this Court to declare that his custody falls under \u00a7 1226(a) and its implementing regulations, and to direct Respondents either to release Petitioner or to afford him a bond hearing without further delay.</p>
+
+<div class="sh">CUSTODY</div>
+
+<p>6. Petitioner is presently held by Immigration and Customs Enforcement at the {{DETENTION_FACILITY}} in {{FACILITY_LOCATION}}. He is therefore \u201cin custody\u201d of the Department of Homeland Security within the meaning of the federal habeas corpus statute. <em>Jones v. Cunningham</em>, 371 U.S. 236, 243 (1963).</p>
+
+<div class="sh">JURISDICTION</div>
+
+<p>7. Jurisdiction lies in this Court under 28 U.S.C. \u00a7 2241 (habeas corpus), 28 U.S.C. \u00a7 1331 (federal question), Article I, \u00a7 9, cl. 2 of the United States Constitution (the Suspension Clause), and the Immigration and Nationality Act, 8 U.S.C. \u00a7 1101 <em>et seq.</em></p>
+
+<p>8. Authority to grant relief exists under the habeas corpus statutes, 28 U.S.C. \u00a7 2241 <em>et seq.</em>, the Declaratory Judgment Act, 28 U.S.C. \u00a7 2201 <em>et seq.</em>, the All Writs Act, 28 U.S.C. \u00a7 1651, and the INA, 8 U.S.C. \u00a7 1252(e)(2).</p>
+
+<p>9. Federal district courts possess jurisdiction to entertain habeas petitions brought by noncitizens who challenge either the lawfulness or the constitutionality of their confinement. <em>See Zadvydas v. Davis</em>, 533 U.S. 678, 687 (2001).</p>
+
+<div class="sh">REQUIREMENTS OF 28 U.S.C. \u00a7\u00a7 2241, 2243</div>
+
+<p>10. The Court is required to grant the writ or to issue an order directing Respondents to show cause (\u201cOSC\u201d) \u201cforthwith,\u201d unless the petition fails to state grounds for relief. 28 U.S.C. \u00a7 2243. Should an OSC be issued, the statute obligates Respondents to file a return \u201cwithin three days unless for good cause additional time, not exceeding twenty days, is allowed.\u201d <em>Id.</em></p>
+
+<p>11. Petitioner satisfies the \u201cin custody\u201d requirement of \u00a7 2241 by virtue of his arrest and continued detention by Respondents.</p>
+
+<div class="sh">VENUE</div>
+
+<p>12. Venue is proper under 28 U.S.C. \u00a7 1391(e) because Respondents are officers or employees of the United States acting in their official capacities, and because a substantial part of the events giving rise to these claims occurred within the {{DISTRICT_FULL}}. Petitioner falls under the jurisdiction of ICE\u2019s {{FIELD_OFFICE}} and is currently confined at the {{DETENTION_FACILITY}} in {{FACILITY_LOCATION}}.</p>
+
+<div class="sh">EXHAUSTION OF ADMINISTRATIVE REMEDIES</div>
+
+<p>13. Exhaustion of administrative remedies is not required where, as here, such pursuit would be futile. <em>See, e.g., Aguilar v. Lewis</em>, 50 F. Supp. 2d 539, 542\u201343 (E.D. Va. 1999).</p>
+
+<p>14. Seeking a custody redetermination hearing before an IJ would be futile because the BIA\u2019s recent holding classifies every person who entered the United States without inspection as an \u201capplicant for admission\u201d subject to mandatory detention under \u00a7 1225(b)(2)(A). <em>See Matter of Yajure Hurtado</em>, 29 I&amp;N Dec. 216 (BIA 2025); <em>see also Zaragoza Mosqueda v. Noem</em>, 2025 WL 2591530, at *7 (C.D. Cal. Sept. 8, 2025) (recognizing that <em>Yajure Hurtado</em> makes administrative exhaustion futile).</p>
+
+<p>15. Moreover, the immigration agency lacks authority to adjudicate Petitioner\u2019s constitutional challenge to his detention, rendering further administrative proceedings pointless. <em>Reno v. Am.-Arab Anti-Discrim. Comm.</em>, 525 U.S. 471, 119 S. Ct. 936, 142 L. Ed. 2d 940 (1999).</p>
+
+<div class="sh">PARTIES</div>
+
+<p>16. Petitioner {{PETITIONER_NAME}} is a citizen of {{PETITIONER_COUNTRY}} who has lived in the United States since {{ENTRY_DATE}}. He is currently confined at the {{DETENTION_FACILITY}}.</p>
+
+<p>17. Respondent {{WARDEN_NAME}} is sued in his official capacity as Warden of the {{DETENTION_FACILITY}}. In that capacity, he serves as Petitioner\u2019s immediate custodian.</p>
+
+<p>18. Respondent {{FOD_NAME}} is sued in his official capacity as Field Office Director of the {{FIELD_OFFICE}}, Enforcement and Removal Operations, U.S. Immigration &amp; Customs Enforcement. In that capacity, Respondent {{FOD_NAME}} is Petitioner\u2019s legal custodian.</p>
+
+<p>19. Respondent {{ICE_DIRECTOR}} is sued in his official capacity as Acting Director of ICE. As the head of the agency, he is a legal custodian of Petitioner.</p>
+
+<p>20. Respondent {{DHS_SECRETARY}} is sued in her official capacity as Secretary of Homeland Security. As the head of the department charged with enforcing the immigration laws, she is Petitioner\u2019s ultimate legal custodian.</p>
+
+<p>21. Respondent {{AG_NAME}} is sued in her official capacity as Attorney General of the United States. She exercises authority over the Department of Justice and bears responsibility for the faithful administration of the nation\u2019s immigration laws.</p>
+
+<div class="sh">LEGAL BACKGROUND AND ARGUMENT</div>
+
+<p>22. The INA establishes three principal detention frameworks for noncitizens in removal proceedings.</p>
+
+<p>23. First, individuals held under 8 U.S.C. \u00a7 1226(a) are generally entitled to a bond hearing unless they have been arrested for, charged with, or convicted of certain enumerated offenses that trigger mandatory custody. <em>See</em> 8 U.S.C. \u00a7\u00a7 1226(a), 1226(c); <em>see also</em> 8 C.F.R. \u00a7\u00a7 1003.19(a), 1236.1(d).</p>
+
+<p>24. Second, the INA mandates detention of noncitizens subject to expedited removal under 8 U.S.C. \u00a7 1225(b)(1) and of other recent arrivals characterized as \u201cseeking admission\u201d under \u00a7 1225(b)(2).</p>
+
+<p>25. Third, the INA authorizes continued confinement of noncitizens who have received a final order of removal. <em>See</em> 8 U.S.C. \u00a7 1231(a)\u2013(b).</p>
+
+<p>26. For decades, individuals who entered the country without inspection and who were subsequently taken into custody and placed into standard removal proceedings were afforded the opportunity to seek release on bond and to receive bond hearings before an IJ\u2014provided their criminal history did not render them ineligible.</p>
+
+<p>27. Beginning in July 2025, however, ICE adopted the position that every person who entered without inspection should be treated as \u201cseeking admission\u201d and therefore subject to mandatory detention under 8 U.S.C. \u00a7 1225(b)(2)(A).</p>
+
+<p>28. On September 5, 2025, the BIA formalized this interpretation in a precedential ruling that broke sharply with the statutory text, longstanding federal precedent, and the agency\u2019s own regulations. <em>Matter of Yajure Hurtado</em>, 29 I&amp;N Dec. 216 (BIA 2025).</p>
+
+<p>29. This new reading of the law is at odds with the statutory framework and its implementing regulations.</p>
+
+<p>30. Courts across the country\u2014including this Court\u2014have repudiated the government\u2019s interpretation, consistently holding that \u00a7 1226, rather than \u00a7 1225(b)(2), governs the detention of noncitizens who entered without inspection and were later apprehended in the interior. <em>See, e.g., Hasan v. Crawford</em>, No. 1:25-cv-1408, 2025 WL 2682255 (E.D. Va. Sept. 19, 2025); <em>Quispe Ardiles v. Noem</em>, No. 1:25-cv-01382 (E.D. Va. Sept. 30, 2025); <em>Venancio v. Hyde et al</em>, No. 1:25-cv-12616 (D. Mass. Oct. 9, 2025); <em>Artiga v. Genalo</em>, No. 2:25-cv-05208 (E.D.N.Y. Oct. 7, 2025); <em>Sampiao v. Hyde</em>, 2025 WL 2607924 (D. Mass. Sept. 9, 2025); <em>Leal-Hernandez v. Noem</em>, 2025 WL 2430025 (D. Md. Aug. 24, 2025); <em>Lopez Benitez v. Francis</em>, 2025 WL 2371588 (S.D.N.Y. Aug. 13, 2025); <em>Kostak v. Trump</em>, 2025 WL 2472136 (W.D. La. Aug. 27, 2025); <em>Echevarria v. Bondi</em>, 2025 WL 2821282, at *4 (D. Ariz. Oct. 3, 2025).</p>
+
+<p>31. Pursuant to the Supreme Court\u2019s decision in <em>Loper Bright v. Raimondo</em>, 603 U.S. 369 (2024), this Court should construe the statute independently, affording no weight to the BIA\u2019s expansive reading of \u00a7 1225(b)(2) where it conflicts with the statutory text, governing regulations, and binding precedent.</p>
+
+<p>32. The detention provisions at \u00a7 1226(a) and \u00a7 1225(b)(2) were both enacted as part of the Illegal Immigration Reform and Immigrant Responsibility Act of 1996 (\u201cIIRIRA\u201d), Pub. L. No. 104-208, Div. C, \u00a7\u00a7 302\u201303. In the wake of IIRIRA, the Executive Office for Immigration Review (\u201cEOIR\u201d) promulgated regulations making clear that persons who entered without inspection were to be held under \u00a7 1226(a)\u2014not \u00a7 1225. <em>See</em> 62 Fed. Reg. 10312, 10323 (Mar. 6, 1997).</p>
+
+<p>33. The structure of the statute confirms this reading. In 2025, Congress added new mandatory-detention grounds to \u00a7 1226(c) that apply exclusively to noncitizens who have not been admitted, specifically referencing inadmissibility for entry without inspection under 8 U.S.C. \u00a7 1182(a)(6)(A). By enacting these provisions, Congress demonstrated its understanding that such individuals fall within the ambit of \u00a7 1226(a).</p>
+
+<p>34. The Supreme Court has explained that \u00a7 1225(b) is directed \u201cprimarily [at those] seeking entry\u201d and is ordinarily applied \u201cat the Nation\u2019s borders and ports of entry.\u201d <em>Jennings v. Rodriguez</em>, 583 U.S. 281, 297\u201398 (2018). By contrast, \u00a7 1226 \u201cauthorizes the Government to detain certain aliens already in the country pending the outcome of removal proceedings.\u201d <em>Id.</em> at 289.</p>
+
+<p>35. Section 1225(b)(2) applies, by its terms, only to those \u201cseeking admission.\u201d The implementing regulations at 8 C.F.R. \u00a7 1.2 likewise describe noncitizens who are \u201ccoming or attempting to come into the United States.\u201d The present progressive tense of this language excludes individuals like Petitioner, who was apprehended in the interior years after his initial entry and who is no longer in the process of \u201cseeking admission.\u201d <em>See Martinez v. Hyde</em>, 2025 WL 2084238, at *6 (D. Mass. July 24, 2025); <em>see also Al Otro Lado v. McAleenan</em>, 394 F. Supp. 3d 1168, 1200 (S.D. Cal. 2019).</p>
+
+<p>36. The mandatory detention provision of \u00a7 1225(b)(2) accordingly does not reach Petitioner, who entered this country years before he was taken into custody.</p>
+
+<div class="sh">STATEMENT OF FACTS</div>
+
+<p>37. Petitioner is a citizen of {{PETITIONER_COUNTRY}}.</p>
+
+<p>38. On information and belief, Petitioner entered the United States without inspection in {{ENTRY_DATE}}, and has resided continuously in this country since that time.</p>
+
+<p>39. On information and belief, Petitioner {{CRIMINAL_HISTORY}}.</p>
+
+<p>40. On information and belief, Petitioner was taken into custody by immigration authorities in {{APPREHENSION_LOCATION}} on {{APPREHENSION_DATE}}.</p>
+
+<p>41. He is currently held at the {{DETENTION_FACILITY}}.</p>
+
+<p>42. {{COMMUNITY_TIES}}</p>
+
+<p>43. Absent relief from this Court, Petitioner faces indefinite confinement with no opportunity to seek release on bond.</p>
+
+<div class="sh">COUNT I</div>
+<div class="cnt">Violation of 8 U.S.C. \u00a7 1226(a)</div>
+<div class="cnts">Unlawful Denial of Release on Bond</div>
+
+<p>44. Petitioner incorporates by reference each of the foregoing paragraphs as though fully set forth herein.</p>
+
+<p>45. To the extent Petitioner may lawfully be detained at all, his custody is governed by 8 U.S.C. \u00a7 1226(a).</p>
+
+<p>46. Under \u00a7 1226(a) and its implementing regulations, Petitioner is entitled to a hearing at which an Immigration Judge determines whether he may be released on bond. <em>See</em> 8 C.F.R. \u00a7\u00a7 236.1(d), 1003.19(a)\u2013(f).</p>
+
+<p>47. No such hearing has been provided, nor will one be provided under the government\u2019s current interpretation of the statute.</p>
+
+<p>48. Petitioner\u2019s ongoing detention without a bond hearing is therefore unlawful.</p>
+
+<div class="sh">COUNT II</div>
+<div class="cnt">Violation of Bond Regulations, 8 C.F.R. \u00a7\u00a7 236.1, 1236.1, and 1003.19</div>
+<div class="cnts">Unlawful Denial of Release on Bond</div>
+
+<p>49. Petitioner incorporates by reference each of the foregoing paragraphs as though fully set forth herein.</p>
+
+<p>50. Following the enactment of IIRIRA, both EOIR and the former Immigration and Naturalization Service adopted an interim rule interpreting the amended statute. Under the heading \u201cApprehension, Custody, and Detention,\u201d the agencies explained that individuals present in the United States without admission or parole would remain eligible for bond and bond redetermination. 62 Fed. Reg. at 10323. This regulation confirmed that such individuals fell within the scope of 8 U.S.C. \u00a7 1226 and its implementing provisions.</p>
+
+<p>51. The government\u2019s application of \u00a7 1225(b)(2) to Petitioner operates to mandate his continued confinement in contravention of 8 C.F.R. \u00a7\u00a7 236.1, 1236.1, and 1003.19.</p>
+
+<div class="sh">COUNT III</div>
+<div class="cnt">Violation of the Fifth Amendment Right to Due Process</div>
+
+<p>52. Petitioner incorporates by reference each of the foregoing paragraphs as though fully set forth herein.</p>
+
+<p>53. The Due Process Clause of the Fifth Amendment forbids the federal government from depriving any person of \u201clife, liberty, or property, without due process of law.\u201d U.S. Const. amend. V.</p>
+
+<p>54. The Supreme Court has consistently recognized that the Constitution ordinarily demands a hearing before the government may deprive a person of liberty. <em>Zinermon v. Burch</em>, 494 U.S. 113, 127 (1990).</p>
+
+<p>55. Applying the framework set forth in <em>Mathews v. Eldridge</em>, 424 U.S. 319 (1976), the balance of interests weighs decisively in Petitioner\u2019s favor.</p>
+
+<p>56. Petitioner\u2019s interest in freedom from physical confinement is of the highest order. The right to be free from government custody is \u201cthe most elemental of liberty interests.\u201d <em>Hamdi v. Rumsfeld</em>, 542 U.S. 507, 529 (2004); <em>see also Zadvydas v. Davis</em>, 533 U.S. 678, 690 (2001).</p>
+
+<p>57. The risk that Petitioner is being erroneously deprived of his liberty is substantial. Petitioner {{CRIMINAL_HISTORY}} and has deep roots in the community.</p>
+
+<p>58. The government\u2019s interest in holding Petitioner without process is slight. Immigration detention is civil rather than punitive and may be justified only to prevent danger to the community or to ensure appearance at future proceedings. <em>See Zadvydas</em>, 533 U.S. at 690.</p>
+
+<p>59. The administrative cost of affording Petitioner a bond hearing is minimal, particularly when measured against the magnitude of the liberty interest at stake. <em>See Mathews</em>, 424 U.S. at 334\u201335.</p>
+
+<p>60. Petitioner respectfully requests that this Court order his immediate release from custody or, in the alternative, direct that he be afforded a bond hearing.</p>
+
+<div class="sh">PRAYER FOR RELIEF</div>
+
+<p class="ni">WHEREFORE, Petitioner respectfully prays that this Court will:</p>
+
+<div class="plist">
+<p>(1) Assume jurisdiction over this matter;</p>
+<p>(2) Set this matter for expedited consideration;</p>
+<p>(3) Order that Petitioner not be transferred outside of this District;</p>
+<p>(4) Issue an Order to Show Cause directing Respondents to demonstrate within three days why the relief sought herein should not be granted;</p>
+<p>(5) Declare that Petitioner\u2019s detention is unlawful;</p>
+<p>(6) Issue a Writ of Habeas Corpus directing Respondents to release Petitioner from custody or to provide him with a bond hearing pursuant to 8 U.S.C. \u00a7 1226(a) or the Due Process Clause within seven days;</p>
+<p>(7) Award Petitioner attorney\u2019s fees and costs under the Equal Access to Justice Act and on any other basis warranted by law; and</p>
+<p>(8) Grant such further relief as this Court deems just and proper.</p>
+</div>
+
+<p class="ni" style="margin-top:18px">Date: {{FILING_DATE}}</p>
+
+<div class="sig">
+<p class="ni" style="margin-bottom:0">Respectfully Submitted,</p>
+<p class="ni" style="margin-bottom:0">/s/ {{ATTORNEY_1_NAME}}</p>
+<p class="ni" style="margin-bottom:0;font-weight:700;text-transform:uppercase">{{ATTORNEY_1_NAME}}</p>
+<p class="ni" style="margin-bottom:0">{{ATTORNEY_1_BAR}}</p>
+<p class="ni" style="margin-bottom:0">{{ATTORNEY_1_FIRM}}</p>
+<p class="ni" style="margin-bottom:0">{{ATTORNEY_1_ADDR}}</p>
+<p class="ni" style="margin-bottom:0">{{ATTORNEY_1_PHONE}}</p>
+<p class="ni" style="margin-bottom:12px">{{ATTORNEY_1_EMAIL}}</p>
+<p class="ni" style="margin-bottom:0">/s/ {{ATTORNEY_2_NAME}}</p>
+<p class="ni" style="margin-bottom:0;font-weight:700;text-transform:uppercase">{{ATTORNEY_2_NAME}}</p>
+<p class="ni" style="margin-bottom:0">{{ATTORNEY_2_BAR}}</p>
+<p class="ni" style="margin-bottom:0">{{ATTORNEY_2_FIRM}}</p>
+<p class="ni" style="margin-bottom:0">{{ATTORNEY_2_ADDR}}</p>
+<p class="ni" style="margin-bottom:0">{{ATTORNEY_2_PHONE}}</p>
+<p class="ni" style="margin-bottom:0">{{ATTORNEY_2_EMAIL}}</p>
+<p class="ni" style="margin-top:6px;font-style:italic">Attorneys for Petitioner</p>
+</div>
+
+<div style="page-break-before:always;margin-top:48px"></div>
+<div class="sh">VERIFICATION PURSUANT TO 28 U.S.C. \u00a7 2242</div>
+
+<p>I represent Petitioner, {{PETITIONER_NAME}}, and submit this verification on his behalf. I hereby verify that the factual statements made in the foregoing Petition for Writ of Habeas Corpus are true and correct to the best of my knowledge.</p>
+
+<p class="ni" style="margin-top:18px">Dated this {{FILING_DATE}}.</p>
+
+<div class="sig">
+<p class="ni" style="margin-bottom:0">/s/ {{ATTORNEY_1_NAME}}</p>
+<p class="ni" style="margin-bottom:0;font-weight:700;text-transform:uppercase">{{ATTORNEY_1_NAME}}</p>
+<p class="ni">Attorney for Petitioner</p>
+</div>
+`;
+
+/* ═══ TEMPLATE REGISTRY ═══ */
+const TEMPLATES={'default':{id:'tpl_default',name:'Habeas Petition (General)',html:PETITION_TPL}};
+
+/* ═══ MOCK DATA ═══ */
+const MOCK_MATTERS=[{
+  id:'mock_rivera_001',
+  petitionerName:'Juan Jose Rivera',
+  name:'Rivera',
+  stage:'Bond Hearing',
+  circuit:'4th Circuit',
+  facility:'Farmville Detention Center',
+  facilityLocation:'Farmville, Virginia',
+  daysInStage:3,
+  filingDate:'October 16, 2025',
+  caseNumber:'1:25-cv-1793',
+  bondGranted:'Granted',
+  daysToFiling:14,
+  variables:{
+    PETITIONER_NAME:'Juan Jose Rivera',
+    PETITIONER_COUNTRY:'El Salvador',
+    ENTRY_DATE:'October 2005',
+    YEARS_RESIDENCE:'twenty',
+    APPREHENSION_LOCATION:'Washington, D.C.',
+    APPREHENSION_DATE:'October 2, 2025',
+    CRIMINAL_HISTORY:'has never been arrested or charged with any crime',
+    COMMUNITY_TIES:'Petitioner has resided in the Washington, D.C. metropolitan area for approximately twenty years. He has established deep roots in his community through consistent employment and close family relationships.',
+    DETENTION_FACILITY:'Farmville Detention Center',
+    FACILITY_LOCATION:'Farmville, Virginia',
+    WARDEN_NAME:'Jeff Crawford',
+    FOD_NAME:'Russell Hott',
+    FIELD_OFFICE:'Washington Field Office',
+    ICE_DIRECTOR:'Todd M. Lyons',
+    DHS_SECRETARY:'Kristi Noem',
+    AG_NAME:'Pamela Bondi',
+    DISTRICT_FULL:'Eastern District of Virginia',
+    DIVISION:'Alexandria Division',
+    COURT_LOCATION:'Alexandria, Virginia',
+    CASE_NUMBER:'1:25-cv-1793',
+    JUDGE_CODE:'PTG/WBP',
+    FILING_DATE:'October 16, 2025',
+    ATTORNEY_1_NAME:'Katherine Soltis',
+    ATTORNEY_1_BAR:'VA Bar No. 89590',
+    ATTORNEY_1_FIRM:'Taylor Diaz & Soltis, PLLC',
+    ATTORNEY_1_ADDR:'200 Little Falls St Suite 207, Falls Church, VA 22046',
+    ATTORNEY_1_PHONE:'571-351-2227',
+    ATTORNEY_1_EMAIL:'katie@tdsimmigrationlaw.com',
+    ATTORNEY_2_NAME:'Sarnata Reynolds',
+    ATTORNEY_2_BAR:'CA Bar No. 203444',
+    ATTORNEY_2_FIRM:'Ceartas Solutions',
+    ATTORNEY_2_ADDR:'6930 Carroll Ave Suite 500, Takoma Park, MD 20912',
+    ATTORNEY_2_PHONE:'301-531-5870',
+    ATTORNEY_2_EMAIL:'sarnata@ceartassolutions.com',
+  }
+}];
+
+/* ═══ CONSTANTS ═══ */
+const STAGES=['Intake','Drafting','Attorney Review','Ready to File','Filed','Awaiting Response','Reply Filed','Order Received','Bond Hearing','Resolved'];
+const SC={'Intake':'#6366f1','Drafting':'#8b5cf6','Attorney Review':'#a855f7','Ready to File':'#d946ef','Filed':'#ec4899','Awaiting Response':'#f43f5e','Reply Filed':'#f97316','Order Received':'#eab308','Bond Hearing':'#22c55e','Resolved':'#71717a'};
+
+/* ═══ STATE ═══ */
+const S={view:'pipeline',user:null,matters:[],matterId:null,md:null,tpl:null,loading:false};
+
+/* ═══ SOFTR USER ═══ */
+function getUser(){
+  if(window.logged_in_user&&window.logged_in_user.softr_user_email)
+    return{email:window.logged_in_user.softr_user_email,name:window.logged_in_user.softr_user_full_name||''};
+  const p=new URLSearchParams(location.search);
+  if(p.get('email'))return{email:p.get('email'),name:p.get('name')||''};
+  return{email:'dev@local',name:'Dev'};
+}
+
+/* ═══ CONFIG ═══ */
+const CK='habeas_cfg';
+const DEFAULT_URL='https://n8n.intelechia.com/webhook/habeas';
+let CFG=JSON.parse(localStorage.getItem(CK)||'{}');
+if(!CFG.url){CFG.url=DEFAULT_URL;localStorage.setItem(CK,JSON.stringify(CFG))}
+function cfgShow(){document.getElementById('cfgModal').classList.remove('hide');document.getElementById('cfgUrl').value=CFG.url||''}
+function cfgHide(){document.getElementById('cfgModal').classList.add('hide')}
+function cfgSave(){CFG.url=document.getElementById('cfgUrl').value.replace(/\/+$/,'');localStorage.setItem(CK,JSON.stringify(CFG));cfgHide();loadMatters()}
+
+/* ═══ API ═══ */
+async function api(action,extra={}){
+  if(!CFG.url){cfgShow();throw new Error('Configure webhook URL')}
+  const r=await fetch(CFG.url+'?action='+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,email:S.user?.email,...extra})});
+  if(!r.ok)throw new Error('API '+r.status);
+  return r.json();
+}
+
+async function loadMatters(){
+  S.loading=true;draw();
+  try{const d=await api('list_matters');S.matters=d.matters||[]}
+  catch(e){console.warn('API unavailable, using mock data:',e.message);S.matters=[]}
+  if(!S.matters.length)S.matters=[...MOCK_MATTERS];
+  S.loading=false;draw();
+}
+
+function resolveTemplate(matter,apiTpl){
+  if(apiTpl&&apiTpl.html)return apiTpl;
+  const c=matter?.circuit||'';
+  return TEMPLATES[c]||TEMPLATES['default'];
+}
+
+async function loadMatter(id){
+  S.loading=true;S.matterId=id;draw();
+  const mock=MOCK_MATTERS.find(m=>m.id===id);
+  if(mock){S.md=mock;S.tpl=resolveTemplate(mock,null);S.loading=false;draw();return}
+  try{const d=await api('get_matter',{recordId:id});S.md=d.matter;S.tpl=resolveTemplate(d.matter,d.template)}
+  catch(e){console.error(e)}
+  S.loading=false;draw();
+}
+
+/* ═══ NAV ═══ */
+const TABS=[{id:'pipeline',l:'Pipeline',i:'\u25a6'},{id:'matters',l:'Matters',i:'\u2630'},{id:'dashboard',l:'Dashboard',i:'\u25d4'},{id:'intake',l:'+ New',i:''}];
+function drawNav(){
+  const a=S.matters.filter(m=>m.stage!=='Resolved').length;
+  document.getElementById('tabs').innerHTML=TABS.map(t=>{
+    const on=S.view===t.id?' on':'';
+    const ct=t.id==='pipeline'&&a?`<span class="ct">${a}</span>`:'';
+    return`<button class="tab${on}" onclick="go('${t.id}')">${t.i?t.i+' ':''}${t.l}${ct?' '+ct:''}</button>`;
+  }).join('');
+  document.getElementById('uDisp').textContent=S.user?.email||'';
+}
+function go(v){S.view=v;if(v!=='editor'){S.matterId=null;S.md=null;S.tpl=null}draw()}
+function openMatter(id){S.view='editor';draw();loadMatter(id)}
+function draw(){
+  drawNav();
+  document.querySelectorAll('.view').forEach(e=>e.classList.remove('on'));
+  const v=document.getElementById('v-'+S.view);if(v)v.classList.add('on');
+  ({pipeline:drawPipeline,matters:drawMatters,editor:drawEditor,dashboard:drawDash,intake:drawIntake})[S.view]?.();
+}
+
+/* ═══ UTILS ═══ */
+function esc(s){if(s==null)return'';const d=document.createElement('div');d.textContent=String(s);return d.innerHTML}
+function dc(d){return d>10?'bd':d>5?'wn':'ok'}
+function sb(stage){return`<span class="stg" style="background:${SC[stage]||'#71717a'}">${esc(stage)}</span>`}
+
+/* ═══ PIPELINE ═══ */
+function drawPipeline(){
+  const el=document.getElementById('v-pipeline');
+  if(S.loading){el.innerHTML='<div class="loading">Loading\u2026</div>';return}
+  if(!S.matters.length){el.innerHTML='<div class="empty">No matters yet. <a href="#" onclick="go(\'intake\');return false">Create one \u2192</a></div>';return}
+  const t=S.matters.length;
+  const c={};STAGES.forEach(s=>c[s]=0);S.matters.forEach(m=>c[m.stage]=(c[m.stage]||0)+1);
+  const strip=STAGES.map(s=>c[s]?`<div class="s" style="width:${(c[s]/t)*100}%;background:${SC[s]}"></div>`:'').join('');
+  const cols=STAGES.filter(s=>c[s]>0||STAGES.indexOf(s)<5).map(stage=>{
+    const cards=S.matters.filter(m=>m.stage===stage).map(m=>{
+      const d=m.daysInStage||0;
+      return`<div class="kc" onclick="openMatter('${esc(m.id)}')" style="border-left-color:${SC[stage]}">
+        <div class="kn">${esc(m.petitionerName||m.name||'\u2014')}</div>
+        <div class="km"><span>${esc(m.circuit||'')}</span><span>${esc(m.facility||'')}</span><span class="kd ${dc(d)}">${d}d</span></div></div>`;
+    }).join('');
+    return`<div class="kcol"><div class="kchd"><span style="display:flex;align-items:center;gap:5px"><span class="dot" style="background:${SC[stage]}"></span>${stage}</span><span>${c[stage]}</span></div>${cards||'<div style="padding:12px;font-size:11px;color:var(--ink4);text-align:center">\u2014</div>'}</div>`;
+  }).join('');
+  const a=S.matters.filter(m=>m.stage!=='Resolved').length;
+  el.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="font-size:15px;font-weight:700">Pipeline</div><div style="font-size:12px;color:var(--ink4)">${a} active \u00b7 ${t} total</div></div><div class="pstrip">${strip}</div><div class="kanban">${cols}</div>`;
+}
+
+/* ═══ MATTERS TABLE ═══ */
+function drawMatters(){
+  const el=document.getElementById('v-matters');
+  if(S.loading){el.innerHTML='<div class="loading">Loading\u2026</div>';return}
+  const rows=S.matters.map(m=>`<tr onclick="openMatter('${esc(m.id)}')">
+    <td style="font-weight:600">${esc(m.petitionerName||m.name||'\u2014')}</td><td>${sb(m.stage)}</td>
+    <td>${esc(m.circuit||'\u2014')}</td><td>${esc(m.facility||'\u2014')}</td>
+    <td>${m.daysInStage||0}d</td><td>${esc(m.filingDate||'\u2014')}</td><td>${esc(m.caseNumber||'\u2014')}</td></tr>`).join('');
+  el.innerHTML=`<div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+    <input type="text" placeholder="Search\u2026" style="flex:1;max-width:280px;padding:6px 8px;border:1px solid var(--bd);border-radius:4px" oninput="fltTbl(this.value)">
+    <button class="btn btn-ac btn-sm" onclick="go('intake')">+ New Matter</button></div>
+    <div class="card" style="padding:0;overflow-x:auto"><table class="mt" id="mTbl">
+    <thead><tr><th>Petitioner</th><th>Stage</th><th>Circuit</th><th>Facility</th><th>Days</th><th>Filed</th><th>Case #</th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="7" class="empty">No matters</td></tr>'}</tbody></table></div>`;
+}
+function fltTbl(q){const lc=q.toLowerCase();document.querySelectorAll('#mTbl tbody tr').forEach(r=>{r.style.display=r.textContent.toLowerCase().includes(lc)?'':'none'})}
+
+/* ═══ EDITOR ═══ */
+function drawEditor(){
+  const el=document.getElementById('v-editor');
+  if(S.loading){el.innerHTML='<div class="loading">Loading\u2026</div>';return}
+  if(!S.md){el.innerHTML='<div class="empty">Select a matter from Pipeline or Matters.</div>';return}
+  const m=S.md,v=m.variables||{};
+  const secs=[
+    {t:'Petitioner',f:[['PETITIONER_NAME','Full Name'],['PETITIONER_COUNTRY','Country'],['ENTRY_DATE','Entry Date'],['YEARS_RESIDENCE','Years Residence'],['APPREHENSION_LOCATION','Apprehension Location'],['APPREHENSION_DATE','Apprehension Date'],['CRIMINAL_HISTORY','Criminal History'],['COMMUNITY_TIES','Community Ties',1]]},
+    {t:'Detention',f:[['DETENTION_FACILITY','Facility'],['FACILITY_LOCATION','Facility Location'],['WARDEN_NAME','Warden']]},
+    {t:'Respondents',f:[['FOD_NAME','Field Office Director'],['FIELD_OFFICE','ICE Field Office'],['ICE_DIRECTOR','ICE Director'],['DHS_SECRETARY','DHS Secretary'],['AG_NAME','Attorney General']]},
+    {t:'Court & Case',f:[['DISTRICT_FULL','District'],['DIVISION','Division'],['COURT_LOCATION','Court Location'],['CASE_NUMBER','Case Number'],['JUDGE_CODE','Judge Code'],['FILING_DATE','Filing Date']]},
+    {t:'Lead Attorney',f:[['ATTORNEY_1_NAME','Name'],['ATTORNEY_1_BAR','Bar #'],['ATTORNEY_1_FIRM','Firm'],['ATTORNEY_1_ADDR','Address',1],['ATTORNEY_1_PHONE','Phone'],['ATTORNEY_1_EMAIL','Email']]},
+    {t:'Co-Counsel',f:[['ATTORNEY_2_NAME','Name'],['ATTORNEY_2_BAR','Bar #'],['ATTORNEY_2_FIRM','Firm'],['ATTORNEY_2_ADDR','Address',1],['ATTORNEY_2_PHONE','Phone'],['ATTORNEY_2_EMAIL','Email']]},
+  ];
+  const sideHTML=secs.map(sec=>`<div class="ess"><div class="chd">${sec.t}</div>${sec.f.map(([key,label,ta])=>`<div class="fld"><label>${label} <code>{{${key}}}</code></label>${ta?`<textarea data-v="${key}" oninput="edLive()">${esc(v[key]||'')}</textarea>`:`<input data-v="${key}" value="${esc(v[key]||'')}" oninput="edLive()">`}</div>`).join('')}</div>`).join('');
+  const si=STAGES.indexOf(m.stage||'Intake');
+  const next=si<STAGES.length-1?STAGES[si+1]:null;
+  const isMock=m.id&&m.id.startsWith('mock_');
+  el.innerHTML=`<div class="ebar">
+    <button class="btn btn-sm" onclick="go('pipeline')">\u2190 Back</button>
+    <span style="font-weight:700;font-size:14px">${esc(m.petitionerName||m.name||'\u2014')}</span>
+    ${sb(m.stage||'Intake')}
+    ${next?`<button class="btn btn-sm" onclick="edAdv('${esc(m.id)}','${next}')">\u2192 ${next}</button>`:''}
+    <div class="sp"></div>
+    <span id="edCt" style="font-size:11px;color:var(--ink4)"></span>
+    <button class="btn btn-sm" onclick="edPDF()">\u2193 PDF</button>
+    <button class="btn btn-sm" onclick="edMD()">\u2193 Markdown</button>
+    <button class="btn btn-sm" onclick="window.print()">\u2399 Print</button>
+    ${isMock?'<span class="btn btn-sm" style="opacity:.5;cursor:default">Demo Matter</span>':`<button class="btn btn-ac btn-sm" onclick="edSave()">Save to Airtable</button>`}
+  </div>
+  <div class="ew">
+    <div class="es card" style="padding:0">${sideHTML}</div>
+    <div class="em"><div class="doc" id="docPv">${S.tpl?tplR(S.tpl.html,edV()):'<div class="empty">No template loaded for this circuit.</div>'}</div></div>
+  </div>`;
+  edCt();
+}
+function edV(){const o={};document.querySelectorAll('[data-v]').forEach(e=>{o[e.dataset.v]=e.value||''});return o}
+function edLive(){const p=document.getElementById('docPv');if(p&&S.tpl)p.innerHTML=tplR(S.tpl.html,edV());edCt()}
+function edCt(){const all=document.querySelectorAll('[data-v]');let n=0;all.forEach(e=>{if((e.value||'').trim())n++});const c=document.getElementById('edCt');if(c)c.textContent=n+'/'+all.length+' filled'}
+function tplR(html,vars){
+  if(!html)return'<div class="empty">No template HTML.</div>';
+  return html.replace(/\{\{(\w+)\}\}/g,(_,k)=>{const val=vars[k]||'';return`<span class="vs${val?' ok':''}" data-p="${k}">${esc(val)}</span>`});
+}
+async function edSave(){
+  if(!S.md?.id)return;
+  try{await api('save_fields',{recordId:S.md.id,fields:edV()});toast('Saved')}
+  catch(e){toast('Save failed: '+e.message,1)}
+}
+async function edAdv(id,stage){
+  if(!confirm('Move to \u201c'+stage+'\u201d?'))return;
+  const mock=MOCK_MATTERS.find(m=>m.id===id);
+  if(mock){mock.stage=stage;const sm=S.matters.find(m=>m.id===id);if(sm)sm.stage=stage;toast('Stage \u2192 '+stage);draw();return}
+  try{await api('advance_stage',{recordId:id,stage});toast('Stage \u2192 '+stage);await loadMatters();await loadMatter(id)}
+  catch(e){toast('Failed: '+e.message,1)}
+}
+function edPDF(){
+  const el=document.getElementById('docPv');if(!el)return;
+  const name=(S.md?.petitionerName||'petition').replace(/\s+/g,'_');
+  html2pdf().set({margin:[.7,.7],filename:name+'_habeas.pdf',image:{type:'jpeg',quality:.95},html2canvas:{scale:2},jsPDF:{unit:'in',format:'letter'}}).from(el).save();
+}
+function edMD(){
+  const el=document.getElementById('docPv');if(!el)return;
+  const name=(S.md?.petitionerName||'petition').replace(/\s+/g,'_');
+  let md='';
+  el.querySelectorAll('.ch,.dt,.sh,.cnt,.cnts,p,.sig').forEach(n=>{
+    const t=n.textContent.trim();if(!t)return;
+    if(n.classList.contains('ch')||n.classList.contains('dt'))md+='# '+t+'\n\n';
+    else if(n.classList.contains('sh'))md+='## '+t+'\n\n';
+    else if(n.classList.contains('cnt'))md+='### '+t+'\n\n';
+    else if(n.classList.contains('cnts'))md+='*'+t+'*\n\n';
+    else md+=t+'\n\n';
+  });
+  const b=new Blob([md],{type:'text/markdown'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name+'_habeas.md';a.click();
+}
+
+/* ═══ DASHBOARD ═══ */
+function drawDash(){
+  const el=document.getElementById('v-dashboard');
+  const m=S.matters;
+  if(!m.length){el.innerHTML='<div class="empty">No data. Add matters to see analytics.</div>';return}
+  const active=m.filter(x=>x.stage!=='Resolved');
+  const filed=m.filter(x=>STAGES.indexOf(x.stage)>=4);
+  const granted=m.filter(x=>x.bondGranted==='Granted').length;
+  const decided=m.filter(x=>x.bondGranted==='Granted'||x.bondGranted==='Denied').length;
+  const gr=decided?Math.round((granted/decided)*100):'\u2014';
+  const stuck=active.filter(x=>(x.daysInStage||0)>7).length;
+  const ftd=filed.filter(x=>x.daysToFiling).map(x=>x.daysToFiling);
+  const avgF=ftd.length?(ftd.reduce((a,b)=>a+b,0)/ftd.length).toFixed(1):'\u2014';
+  const sc={};STAGES.forEach(s=>sc[s]=0);m.forEach(x=>sc[x.stage]++);
+  const circ={};m.forEach(x=>{const c=x.circuit||'Unknown';if(!circ[c])circ[c]={t:0,f:0,g:0,d:0};circ[c].t++;if(STAGES.indexOf(x.stage)>=4)circ[c].f++;if(x.bondGranted==='Granted')circ[c].g++;if(x.bondGranted==='Denied')circ[c].d++});
+  const fac={};m.forEach(x=>{const f=x.facility||'Unknown';if(!fac[f])fac[f]={t:0,a:0};fac[f].t++;if(x.stage!=='Resolved')fac[f].a++});
+  const fa=Object.entries(fac).sort((a,b)=>b[1].a-a[1].a).slice(0,8);
+  const mxf=Math.max(...fa.map(f=>f[1].a),1);
+  const bots=active.filter(x=>(x.daysInStage||0)>5).sort((a,b)=>(b.daysInStage||0)-(a.daysInStage||0)).slice(0,8);
+  el.innerHTML=`<div style="font-size:15px;font-weight:700;margin-bottom:14px">Dashboard</div>
+    <div class="kpirow">
+      <div class="kpi card"><div class="kl">Active</div><div class="kv" style="color:var(--ac)">${active.length}</div><div class="ks">of ${m.length} total</div></div>
+      <div class="kpi card" style="border-top-color:var(--purple)"><div class="kl">Avg Days to File</div><div class="kv">${avgF}</div><div class="ks">${filed.length} filed</div></div>
+      <div class="kpi card" style="border-top-color:var(--green)"><div class="kl">Bond Grant Rate</div><div class="kv">${gr}${gr!=='\u2014'?'%':''}</div><div class="ks">${decided} decided</div></div>
+      <div class="kpi card" style="border-top-color:${stuck>10?'var(--red)':'var(--orange)'}"><div class="kl">Stuck > 7 Days</div><div class="kv">${stuck}</div><div class="ks">in current stage</div></div>
+    </div>
+    <div class="dg">
+      <div class="card" style="padding:14px 16px"><div class="chd" style="margin-bottom:10px">Cases by Stage</div>
+        ${STAGES.filter(s=>sc[s]).map(s=>`<div class="br"><div class="bl">${s}</div><div class="bt"><div class="bf" style="width:${(sc[s]/m.length)*100}%;background:${SC[s]}">${sc[s]}</div></div></div>`).join('')}
+      </div>
+      <div class="card" style="padding:14px 16px"><div class="chd" style="margin-bottom:10px">Active by Facility</div>
+        ${fa.map(([n,d])=>`<div class="br"><div class="bl" title="${esc(n)}">${esc(n).substring(0,16)}</div><div class="bt"><div class="bf" style="width:${(d.a/mxf)*100}%;background:var(--ac)">${d.a}</div></div></div>`).join('')}
+      </div>
+    </div>
+    <div class="dg">
+      <div class="card" style="padding:14px 16px"><div class="chd" style="margin-bottom:10px">Circuit Performance</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="border-bottom:2px solid var(--bd)">
+          <th style="text-align:left;padding:5px 6px;font-size:10px;color:var(--ink4);font-weight:700">Circuit</th>
+          <th style="text-align:right;padding:5px 6px;font-size:10px;color:var(--ink4);font-weight:700">Total</th>
+          <th style="text-align:right;padding:5px 6px;font-size:10px;color:var(--ink4);font-weight:700">Filed</th>
+          <th style="text-align:right;padding:5px 6px;font-size:10px;color:var(--ink4);font-weight:700">Grant %</th>
+        </tr></thead><tbody>${Object.entries(circ).sort((a,b)=>b[1].t-a[1].t).map(([c,d])=>{
+          const dec=d.g+d.d;const rate=dec?Math.round((d.g/dec)*100)+'%':'\u2014';
+          return`<tr style="border-bottom:1px solid var(--bg)"><td style="padding:5px 6px;font-weight:600">${esc(c)}</td><td style="padding:5px 6px;text-align:right">${d.t}</td><td style="padding:5px 6px;text-align:right">${d.f}</td><td style="padding:5px 6px;text-align:right;font-weight:700;color:${dec&&d.g/dec>=.6?'var(--green)':'var(--ink2)'}">${rate}</td></tr>`;
+        }).join('')}</tbody></table>
+      </div>
+      ${bots.length?`<div class="card" style="padding:14px 16px"><div class="chd" style="margin-bottom:10px">Bottlenecks</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="border-bottom:2px solid var(--bd)">
+          <th style="text-align:left;padding:5px 6px;font-size:10px;color:var(--ink4)">Matter</th>
+          <th style="text-align:left;padding:5px 6px;font-size:10px;color:var(--ink4)">Stage</th>
+          <th style="text-align:right;padding:5px 6px;font-size:10px;color:var(--ink4)">Days</th>
+        </tr></thead><tbody>${bots.map(x=>`<tr style="border-bottom:1px solid var(--bg);cursor:pointer" onclick="openMatter('${esc(x.id)}')">
+          <td style="padding:5px 6px;font-weight:600">${esc(x.petitionerName||x.name||'\u2014')}</td>
+          <td style="padding:5px 6px">${sb(x.stage)}</td>
+          <td style="padding:5px 6px;text-align:right;font-weight:700;color:${(x.daysInStage||0)>10?'var(--red)':'var(--orange)'}">${x.daysInStage}d</td>
+        </tr>`).join('')}</tbody></table></div>`:'<div></div>'}
+    </div>`;
+}
+
+/* ═══ INTAKE ═══ */
+function drawIntake(){
+  document.getElementById('v-intake').innerHTML=`<div class="card" style="max-width:720px;padding:20px 24px">
+    <div style="font-size:15px;font-weight:700;margin-bottom:2px">New Matter</div>
+    <p style="font-size:12px;color:var(--ink4);margin-bottom:16px">Enter client info. Facility and warden are deduped automatically.</p>
+    <div class="ig">
+      <div class="fld"><label>Petitioner Full Name *</label><input id="i_name" placeholder="Juan Jose Rivera"></div>
+      <div class="fld"><label>Country *</label><input id="i_country" placeholder="El Salvador"></div>
+      <div class="fld"><label>Entry Date *</label><input id="i_entry" placeholder="October 2005"></div>
+      <div class="fld"><label>Years of Residence</label><input id="i_years" placeholder="twenty"></div>
+      <div class="fld"><label>Apprehension Location *</label><input id="i_loc" placeholder="Washington, D.C."></div>
+      <div class="fld"><label>Apprehension Date *</label><input type="date" id="i_date"></div>
+      <div class="fld"><label>Detention Facility *</label><input id="i_fac" placeholder="Farmville Detention Center"></div>
+      <div class="fld"><label>Facility Location</label><input id="i_floc" placeholder="Farmville, Virginia"></div>
+      <div class="fld"><label>Warden</label><input id="i_war" placeholder="Jeff Crawford"></div>
+      <div class="fld"><label>Circuit *</label><select id="i_circ"><option value="">\u2014 Select \u2014</option>
+        <option>1st Circuit</option><option>2nd Circuit</option><option>3rd Circuit</option><option>4th Circuit</option>
+        <option>5th Circuit</option><option>6th Circuit</option><option>7th Circuit</option><option>8th Circuit</option>
+        <option>9th Circuit</option><option>10th Circuit</option><option>11th Circuit</option><option>D.C. Circuit</option>
+      </select></div>
+      <div class="fld"><label>ICE Field Office</label><input id="i_fo" placeholder="Washington Field Office"></div>
+      <div class="fld"><label>Field Office Director</label><input id="i_fod" placeholder="Russell Hott"></div>
+      <div class="fld ifl"><label>Criminal History Statement</label><input id="i_crim" placeholder="has never been arrested or charged with any crime"></div>
+      <div class="fld ifl"><label>Community Ties</label><textarea id="i_ties" placeholder="Family, employment, community connections\u2026"></textarea></div>
+    </div>
+    <div style="margin-top:16px;display:flex;gap:6px">
+      <button class="btn btn-ac" onclick="doIntake()">Create Matter</button>
+      <button class="btn" onclick="go('pipeline')">Cancel</button>
+    </div>
+  </div>`;
+}
+async function doIntake(){
+  const g=id=>(document.getElementById(id)?.value||'').trim();
+  const d={petitionerName:g('i_name'),country:g('i_country'),entryDate:g('i_entry'),yearsResidence:g('i_years'),apprehensionLocation:g('i_loc'),apprehensionDate:g('i_date'),facility:g('i_fac'),facilityLocation:g('i_floc'),warden:g('i_war'),circuit:g('i_circ'),fieldOffice:g('i_fo'),fodName:g('i_fod'),criminalHistory:g('i_crim'),communityTies:g('i_ties')};
+  if(!d.petitionerName||!d.country||!d.circuit){toast('Fill in Name, Country, and Circuit.',1);return}
+  try{const r=await api('create_matter',d);toast('Matter created');await loadMatters();if(r.recordId)openMatter(r.recordId);else go('pipeline')}
+  catch(e){toast('Failed: '+e.message,1)}
+}
+
+/* ═══ TOAST ═══ */
+function toast(msg,err){
+  let t=document.getElementById('toast');
+  if(!t){t=document.createElement('div');t.id='toast';document.body.appendChild(t)}
+  t.textContent=msg;
+  t.style.cssText=`position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:8px 16px;border-radius:6px;font-size:12px;font-weight:600;z-index:300;box-shadow:0 4px 12px rgba(0,0,0,.15);transition:opacity .3s;background:${err?'#fef2f2':'#f0fdf4'};color:${err?'#991b1b':'#166534'};border:1px solid ${err?'#fecaca':'#bbf7d0'};`;
+  t.style.opacity=1;clearTimeout(t._t);t._t=setTimeout(()=>{t.style.opacity=0},2600);
+}
+
+/* ═══ INIT ═══ */
+S.user=getUser();draw();
+if(!CFG.url)cfgShow();else loadMatters();
+</script>
+</body>
+</html>
