@@ -54,8 +54,8 @@ a{color:var(--ac);text-decoration:none}
 .empty{text-align:center;padding:48px;color:var(--ink4);font-size:13px}
 .pstrip{display:flex;height:6px;border-radius:3px;overflow:hidden;margin-bottom:16px;gap:1px}
 .pstrip .s{transition:width .3s}
-.kanban{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;align-items:flex-start}
-.kcol{width:230px;min-width:230px;flex-shrink:0}
+.kanban{display:flex;gap:8px;padding-bottom:8px;align-items:flex-start;flex-wrap:wrap}
+.kcol{flex:1 1 200px;min-width:180px;max-width:100%}
 .kchd{display:flex;align-items:center;justify-content:space-between;padding:6px 8px;font-size:11px;font-weight:700;color:var(--ink3);border-bottom:2px solid var(--bd);margin-bottom:6px}
 .kchd .dot{width:8px;height:8px;border-radius:99px}
 .kc{background:var(--sf);border:1px solid var(--bd);border-radius:5px;padding:8px 10px;margin-bottom:5px;cursor:pointer;transition:.1s;border-left:3px solid transparent}
@@ -111,6 +111,15 @@ a{color:var(--ac);text-decoration:none}
 .br .bf{height:100%;border-radius:3px;transition:width .3s;display:flex;align-items:center;justify-content:flex-end;padding-right:5px;font-size:9px;font-weight:700;color:#fff}
 .ig{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
 @media(max-width:600px){.ig{grid-template-columns:1fr}}
+.atag{display:inline-block;padding:0 5px;border-radius:3px;font-size:9px;font-weight:700;background:#ede9fe;color:#5b21b6;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}
+.attgrp{margin-bottom:18px}
+.attgrp-hd{display:flex;align-items:center;gap:8px;padding:6px 0;margin-bottom:6px;font-size:12px;font-weight:700;color:var(--ink2);border-bottom:1px solid var(--bd)}
+.attgrp-hd .atag{font-size:10px;padding:1px 6px}
+.fbar{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.fbar select{padding:4px 8px;border:1px solid var(--bd);border-radius:4px;font-size:11px;font-weight:600;background:var(--sf);color:var(--ink2)}
+@media(max-width:900px){.kcol{flex:1 1 calc(50% - 4px);min-width:calc(50% - 4px)}}
+@media(max-width:600px){.kcol{flex:1 1 100%;min-width:100%}}
+@media(max-width:768px){.ew{flex-direction:column}.es{width:100%;min-width:0;max-height:none;position:static}.doc{padding:24px 20px}}
 .ifl{grid-column:1/-1}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:flex;align-items:center;justify-content:center}
 .modal.hide{display:none}
@@ -407,6 +416,7 @@ const MOCK_MATTERS=[{
   circuit:'4th Circuit',
   facility:'Farmville Detention Center',
   facilityLocation:'Farmville, Virginia',
+  attorney:'Katherine Soltis',
   daysInStage:3,
   filingDate:'October 16, 2025',
   caseNumber:'1:25-cv-1793',
@@ -455,7 +465,7 @@ const STAGES=['Intake','Drafting','Attorney Review','Ready to File','Filed','Awa
 const SC={'Intake':'#6366f1','Drafting':'#8b5cf6','Attorney Review':'#a855f7','Ready to File':'#d946ef','Filed':'#ec4899','Awaiting Response':'#f43f5e','Reply Filed':'#f97316','Order Received':'#eab308','Bond Hearing':'#22c55e','Resolved':'#71717a'};
 
 /* ═══ STATE ═══ */
-const S={view:'pipeline',user:null,matters:[],matterId:null,md:null,tpl:null,loading:false};
+const S={view:'dashboard',user:null,matters:[],matterId:null,md:null,tpl:null,loading:false,attFilter:''};
 
 /* ═══ SOFTR USER ═══ */
 function getUser(){
@@ -485,7 +495,10 @@ async function api(action,extra={}){
 
 async function loadMatters(){
   S.loading=true;draw();
-  try{const d=await api('list_matters');S.matters=d.matters||[]}
+  try{
+    const d=await api('list_matters');
+    S.matters=(d.matters||[]).map(m=>({...m,attorney:m.attorney||m.attorney_1_name||''}));
+  }
   catch(e){console.warn('API unavailable, using mock data:',e.message);S.matters=[]}
   if(!S.matters.length)S.matters=[...MOCK_MATTERS];
   S.loading=false;draw();
@@ -501,18 +514,18 @@ async function loadMatter(id){
   S.loading=true;S.matterId=id;draw();
   const mock=MOCK_MATTERS.find(m=>m.id===id);
   if(mock){S.md=mock;S.tpl=resolveTemplate(mock,null);S.loading=false;draw();return}
-  try{const d=await api('get_matter',{recordId:id});S.md=d.matter;S.tpl=resolveTemplate(d.matter,d.template)}
+  try{const d=await api('get_matter',{recordId:id});S.md=d.matter;if(S.md&&S.md.variables)S.md.attorney=S.md.variables.ATTORNEY_1_NAME||S.md.attorney||'';S.tpl=resolveTemplate(d.matter,d.template)}
   catch(e){console.error(e)}
   S.loading=false;draw();
 }
 
 /* ═══ NAV ═══ */
-const TABS=[{id:'pipeline',l:'Pipeline',i:'\u25a6'},{id:'matters',l:'Matters',i:'\u2630'},{id:'dashboard',l:'Dashboard',i:'\u25d4'},{id:'intake',l:'+ New',i:''}];
+const TABS=[{id:'dashboard',l:'Dashboard',i:'\u25d4'},{id:'pipeline',l:'Pipeline',i:'\u25a6'},{id:'matters',l:'Matters',i:'\u2630'},{id:'intake',l:'+ New',i:''}];
 function drawNav(){
   const a=S.matters.filter(m=>m.stage!=='Resolved').length;
   document.getElementById('tabs').innerHTML=TABS.map(t=>{
     const on=S.view===t.id?' on':'';
-    const ct=t.id==='pipeline'&&a?`<span class="ct">${a}</span>`:'';
+    const ct=(t.id==='pipeline'||t.id==='dashboard')&&a?`<span class="ct">${a}</span>`:'';
     return`<button class="tab${on}" onclick="go('${t.id}')">${t.i?t.i+' ':''}${t.l}${ct?' '+ct:''}</button>`;
   }).join('');
   document.getElementById('uDisp').textContent=S.user?.email||'';
@@ -530,42 +543,59 @@ function draw(){
 function esc(s){if(s==null)return'';const d=document.createElement('div');d.textContent=String(s);return d.innerHTML}
 function dc(d){return d>10?'bd':d>5?'wn':'ok'}
 function sb(stage){return`<span class="stg" style="background:${SC[stage]||'#71717a'}">${esc(stage)}</span>`}
+function attList(){const s=new Set();S.matters.forEach(m=>{if(m.attorney)s.add(m.attorney)});return[...s].sort()}
+function fltM(){return S.attFilter?S.matters.filter(m=>m.attorney===S.attFilter):S.matters}
+function attSel(view){const atts=attList();if(!atts.length)return'';return`<select onchange="S.attFilter=this.value;draw()" style="padding:4px 8px;border:1px solid var(--bd);border-radius:4px;font-size:11px;font-weight:600"><option value="">All Attorneys</option>${atts.map(a=>`<option${S.attFilter===a?' selected':''}>${esc(a)}</option>`).join('')}</select>`}
+function attTag(name){return name?`<span class="atag" title="${esc(name)}">${esc(name)}</span>`:''}
 
 /* ═══ PIPELINE ═══ */
 function drawPipeline(){
   const el=document.getElementById('v-pipeline');
   if(S.loading){el.innerHTML='<div class="loading">Loading\u2026</div>';return}
   if(!S.matters.length){el.innerHTML='<div class="empty">No matters yet. <a href="#" onclick="go(\'intake\');return false">Create one \u2192</a></div>';return}
-  const t=S.matters.length;
-  const c={};STAGES.forEach(s=>c[s]=0);S.matters.forEach(m=>c[m.stage]=(c[m.stage]||0)+1);
-  const strip=STAGES.map(s=>c[s]?`<div class="s" style="width:${(c[s]/t)*100}%;background:${SC[s]}"></div>`:'').join('');
+  const fm=fltM();
+  const t=fm.length;
+  const c={};STAGES.forEach(s=>c[s]=0);fm.forEach(m=>c[m.stage]=(c[m.stage]||0)+1);
+  const strip=t?STAGES.map(s=>c[s]?`<div class="s" style="width:${(c[s]/t)*100}%;background:${SC[s]}"></div>`:'').join(''):'';
   const cols=STAGES.filter(s=>c[s]>0||STAGES.indexOf(s)<5).map(stage=>{
-    const cards=S.matters.filter(m=>m.stage===stage).map(m=>{
+    const cards=fm.filter(m=>m.stage===stage).map(m=>{
       const d=m.daysInStage||0;
       return`<div class="kc" onclick="openMatter('${esc(m.id)}')" style="border-left-color:${SC[stage]}">
         <div class="kn">${esc(m.petitionerName||m.name||'\u2014')}</div>
-        <div class="km"><span>${esc(m.circuit||'')}</span><span>${esc(m.facility||'')}</span><span class="kd ${dc(d)}">${d}d</span></div></div>`;
+        <div class="km">${m.attorney?attTag(m.attorney):''}<span>${esc(m.circuit||'')}</span><span>${esc(m.facility||'')}</span><span class="kd ${dc(d)}">${d}d</span></div></div>`;
     }).join('');
     return`<div class="kcol"><div class="kchd"><span style="display:flex;align-items:center;gap:5px"><span class="dot" style="background:${SC[stage]}"></span>${stage}</span><span>${c[stage]}</span></div>${cards||'<div style="padding:12px;font-size:11px;color:var(--ink4);text-align:center">\u2014</div>'}</div>`;
   }).join('');
-  const a=S.matters.filter(m=>m.stage!=='Resolved').length;
-  el.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="font-size:15px;font-weight:700">Pipeline</div><div style="font-size:12px;color:var(--ink4)">${a} active \u00b7 ${t} total</div></div><div class="pstrip">${strip}</div><div class="kanban">${cols}</div>`;
+  const a=fm.filter(m=>m.stage!=='Resolved').length;
+  el.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px"><div style="font-size:15px;font-weight:700">Pipeline</div><div style="display:flex;gap:8px;align-items:center">${attSel('pipeline')}<span style="font-size:12px;color:var(--ink4)">${a} active \u00b7 ${t} total</span></div></div><div class="pstrip">${strip}</div><div class="kanban">${cols}</div>`;
 }
 
 /* ═══ MATTERS TABLE ═══ */
 function drawMatters(){
   const el=document.getElementById('v-matters');
   if(S.loading){el.innerHTML='<div class="loading">Loading\u2026</div>';return}
-  const rows=S.matters.map(m=>`<tr onclick="openMatter('${esc(m.id)}')">
-    <td style="font-weight:600">${esc(m.petitionerName||m.name||'\u2014')}</td><td>${sb(m.stage)}</td>
-    <td>${esc(m.circuit||'\u2014')}</td><td>${esc(m.facility||'\u2014')}</td>
-    <td>${m.daysInStage||0}d</td><td>${esc(m.filingDate||'\u2014')}</td><td>${esc(m.caseNumber||'\u2014')}</td></tr>`).join('');
-  el.innerHTML=`<div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+  const fm=fltM();
+  const atts=attList();
+  const grouped=atts.length>0;
+  let tbody='';
+  if(grouped){
+    const byAtt={};fm.forEach(m=>{const a=m.attorney||'Unassigned';if(!byAtt[a])byAtt[a]=[];byAtt[a].push(m)});
+    const order=[...atts];if(byAtt['Unassigned'])order.push('Unassigned');
+    order.forEach(att=>{
+      const ms=byAtt[att];if(!ms||!ms.length)return;
+      tbody+=`<tr><td colspan="8" style="background:var(--bg);padding:8px 10px;font-weight:700;font-size:11px;color:var(--ink2);border-bottom:2px solid var(--bd)">${attTag(att)} ${esc(att)} (${ms.length})</td></tr>`;
+      ms.forEach(m=>{tbody+=`<tr onclick="openMatter('${esc(m.id)}')"><td style="font-weight:600">${esc(m.petitionerName||m.name||'\u2014')}</td><td>${sb(m.stage)}</td><td>${esc(m.circuit||'\u2014')}</td><td>${esc(m.facility||'\u2014')}</td><td>${m.daysInStage||0}d</td><td>${esc(m.filingDate||'\u2014')}</td><td>${esc(m.caseNumber||'\u2014')}</td><td>${attTag(m.attorney)}</td></tr>`});
+    });
+  } else {
+    tbody=fm.map(m=>`<tr onclick="openMatter('${esc(m.id)}')"><td style="font-weight:600">${esc(m.petitionerName||m.name||'\u2014')}</td><td>${sb(m.stage)}</td><td>${esc(m.circuit||'\u2014')}</td><td>${esc(m.facility||'\u2014')}</td><td>${m.daysInStage||0}d</td><td>${esc(m.filingDate||'\u2014')}</td><td>${esc(m.caseNumber||'\u2014')}</td><td>${attTag(m.attorney)}</td></tr>`).join('');
+  }
+  el.innerHTML=`<div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
     <input type="text" placeholder="Search\u2026" style="flex:1;max-width:280px;padding:6px 8px;border:1px solid var(--bd);border-radius:4px" oninput="fltTbl(this.value)">
+    ${attSel('matters')}
     <button class="btn btn-ac btn-sm" onclick="go('intake')">+ New Matter</button></div>
     <div class="card" style="padding:0;overflow-x:auto"><table class="mt" id="mTbl">
-    <thead><tr><th>Petitioner</th><th>Stage</th><th>Circuit</th><th>Facility</th><th>Days</th><th>Filed</th><th>Case #</th></tr></thead>
-    <tbody>${rows||'<tr><td colspan="7" class="empty">No matters</td></tr>'}</tbody></table></div>`;
+    <thead><tr><th>Petitioner</th><th>Stage</th><th>Circuit</th><th>Facility</th><th>Days</th><th>Filed</th><th>Case #</th><th>Attorney</th></tr></thead>
+    <tbody>${tbody||'<tr><td colspan="8" class="empty">No matters</td></tr>'}</tbody></table></div>`;
 }
 function fltTbl(q){const lc=q.toLowerCase();document.querySelectorAll('#mTbl tbody tr').forEach(r=>{r.style.display=r.textContent.toLowerCase().includes(lc)?'':'none'})}
 
@@ -621,7 +651,8 @@ async function edAdv(id,stage){
   if(!confirm('Move to \u201c'+stage+'\u201d?'))return;
   const mock=MOCK_MATTERS.find(m=>m.id===id);
   if(mock){mock.stage=stage;const sm=S.matters.find(m=>m.id===id);if(sm)sm.stage=stage;toast('Stage \u2192 '+stage);draw();return}
-  try{await api('advance_stage',{recordId:id,stage});toast('Stage \u2192 '+stage);await loadMatters();await loadMatter(id)}
+  const fromStage=S.md?.stage||S.matters.find(m=>m.id===id)?.stage||'';
+  try{await api('advance_stage',{recordId:id,stage,fromStage});toast('Stage \u2192 '+stage);await loadMatters();await loadMatter(id)}
   catch(e){toast('Failed: '+e.message,1)}
 }
 function edPDF(){
@@ -700,7 +731,24 @@ function drawDash(){
           <td style="padding:5px 6px">${sb(x.stage)}</td>
           <td style="padding:5px 6px;text-align:right;font-weight:700;color:${(x.daysInStage||0)>10?'var(--red)':'var(--orange)'}">${x.daysInStage}d</td>
         </tr>`).join('')}</tbody></table></div>`:'<div></div>'}
-    </div>`;
+    </div>
+    ${(()=>{
+      const att={};m.forEach(x=>{const a=x.attorney||'Unassigned';if(!att[a])att[a]={t:0,a:0,f:0,g:0};att[a].t++;if(x.stage!=='Resolved')att[a].a++;if(STAGES.indexOf(x.stage)>=4)att[a].f++;if(x.bondGranted==='Granted')att[a].g++});
+      const ae=Object.entries(att).sort((a,b)=>b[1].a-a[1].a);
+      if(ae.length<=1&&ae[0]?.[0]==='Unassigned')return'';
+      const mxa=Math.max(...ae.map(a=>a[1].a),1);
+      return`<div class="dg"><div class="card" style="padding:14px 16px"><div class="chd" style="margin-bottom:10px">Attorney Workload</div>
+        ${ae.map(([n,d])=>`<div class="br"><div class="bl" title="${esc(n)}">${esc(n).substring(0,16)}</div><div class="bt"><div class="bf" style="width:${(d.a/mxa)*100}%;background:var(--purple)">${d.a}</div></div></div>`).join('')}
+      </div>
+      <div class="card" style="padding:14px 16px"><div class="chd" style="margin-bottom:10px">Attorney Performance</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="border-bottom:2px solid var(--bd)">
+          <th style="text-align:left;padding:5px 6px;font-size:10px;color:var(--ink4);font-weight:700">Attorney</th>
+          <th style="text-align:right;padding:5px 6px;font-size:10px;color:var(--ink4);font-weight:700">Active</th>
+          <th style="text-align:right;padding:5px 6px;font-size:10px;color:var(--ink4);font-weight:700">Filed</th>
+          <th style="text-align:right;padding:5px 6px;font-size:10px;color:var(--ink4);font-weight:700">Granted</th>
+        </tr></thead><tbody>${ae.map(([n,d])=>`<tr style="border-bottom:1px solid var(--bg)"><td style="padding:5px 6px;font-weight:600">${attTag(n)} ${esc(n)}</td><td style="padding:5px 6px;text-align:right">${d.a}</td><td style="padding:5px 6px;text-align:right">${d.f}</td><td style="padding:5px 6px;text-align:right;font-weight:700;color:var(--green)">${d.g}</td></tr>`).join('')}</tbody></table>
+      </div></div>`;
+    })()}`;
 }
 
 /* ═══ INTAKE ═══ */
