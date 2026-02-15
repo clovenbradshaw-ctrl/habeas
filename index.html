@@ -514,14 +514,15 @@ async function api(action,extra={}){
   if(!CFG.url){cfgShow();throw new Error('Configure webhook URL')}
   const r=await fetch(CFG.url+'?action='+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,email:S.user?.email,...extra})});
   if(!r.ok)throw new Error('API '+r.status);
-  return r.json();
+  const txt=await r.text();
+  return txt?JSON.parse(txt):{};
 }
 
 async function loadMatters(){
   S.loading=true;draw();
   try{
     const d=await api('list_matters');
-    S.matters=(d.matters||[]).map(m=>({...m,attorney:m.attorney||m.attorney_1_name||''}));
+    S.matters=(d.matters||[]).map(m=>({...m,attorney:m.attorney||m.attorney_1_name||'',facility:m.facility||m.detentionFacility||''}));
   }
   catch(e){console.warn('API unavailable, using mock data:',e.message);S.matters=[]}
   if(!S.matters.length)S.matters=[...MOCK_MATTERS];
