@@ -126,6 +126,29 @@ a{color:var(--ac);text-decoration:none}
 .mbox{background:#fff;border-radius:10px;padding:24px;max-width:440px;width:92%;box-shadow:var(--sh2)}
 .mbox h3{font-size:15px;font-weight:700;margin-bottom:2px}
 .mbox .sub{font-size:12px;color:var(--ink4);margin-bottom:16px}
+/* ═══ DATA TABLES ═══ */
+.dtabs{display:flex;gap:0;border-bottom:2px solid var(--bd);margin-bottom:16px}
+.dtab{padding:8px 16px;font-size:12px;font-weight:700;color:var(--ink4);background:none;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;transition:.15s}
+.dtab:hover{color:var(--ink2)}
+.dtab.on{color:var(--ac);border-bottom-color:var(--ac)}
+.dtab .dct{background:var(--ac);color:#fff;font-size:9px;font-weight:800;padding:1px 5px;border-radius:99px;min-width:14px;text-align:center;margin-left:4px}
+.dtbl{width:100%;border-collapse:collapse}
+.dtbl th{text-align:left;padding:8px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--ink4);border-bottom:2px solid var(--bd);white-space:nowrap}
+.dtbl td{padding:8px 10px;border-bottom:1px solid var(--bg);font-size:12px;vertical-align:top}
+.dtbl tbody tr:hover td{background:var(--acbg)}
+.dtbl .prov{font-size:10px;color:var(--ink4);white-space:nowrap}
+.dtbl .prov .who{color:var(--ink3);font-weight:600}
+.dtbl .prov .when{margin-left:4px}
+.dtbl .linked{display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;background:#ede9fe;color:#5b21b6}
+.dform{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;margin-bottom:12px;padding:16px;border:1px solid var(--acbd);border-radius:var(--r);background:var(--acbg)}
+.dform .fld{margin-bottom:8px}
+.dform-full{grid-column:1/-1}
+.dbtn-row{display:flex;gap:6px;align-items:center;margin-bottom:12px}
+.sel-wrap{position:relative}
+.sel-wrap select{width:100%;padding:6px 8px;border:1px solid var(--bd);border-radius:4px;background:var(--sf);font-size:13px;color:var(--ink)}
+.sel-wrap select:focus{outline:none;border-color:var(--ac);box-shadow:0 0 0 2px var(--acbg)}
+.sel-add{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--ac);font-weight:600;cursor:pointer;margin-top:2px}
+.sel-add:hover{text-decoration:underline}
 @media print{
   .topbar,.es,.ebar{display:none!important}
   .ew{display:block!important}
@@ -153,6 +176,7 @@ a{color:var(--ac);text-decoration:none}
   <div class="view" id="v-editor"></div>
   <div class="view" id="v-dashboard"></div>
   <div class="view" id="v-intake"></div>
+  <div class="view" id="v-data"></div>
 </div>
 </div>
 <div class="modal hide" id="cfgModal">
@@ -501,6 +525,7 @@ async function loadMatters(){
   }
   catch(e){console.warn('API unavailable, using mock data:',e.message);S.matters=[]}
   if(!S.matters.length)S.matters=[...MOCK_MATTERS];
+  seedRef();
   S.loading=false;draw();
 }
 
@@ -520,7 +545,7 @@ async function loadMatter(id){
 }
 
 /* ═══ NAV ═══ */
-const TABS=[{id:'dashboard',l:'Dashboard',i:'\u25d4'},{id:'pipeline',l:'Pipeline',i:'\u25a6'},{id:'matters',l:'Matters',i:'\u2630'},{id:'intake',l:'+ New',i:''}];
+const TABS=[{id:'dashboard',l:'Dashboard',i:'\u25d4'},{id:'pipeline',l:'Pipeline',i:'\u25a6'},{id:'matters',l:'Matters',i:'\u2630'},{id:'data',l:'Data',i:'\u25c9'},{id:'intake',l:'+ New',i:''}];
 function drawNav(){
   const a=S.matters.filter(m=>m.stage!=='Resolved').length;
   document.getElementById('tabs').innerHTML=TABS.map(t=>{
@@ -536,7 +561,7 @@ function draw(){
   drawNav();
   document.querySelectorAll('.view').forEach(e=>e.classList.remove('on'));
   const v=document.getElementById('v-'+S.view);if(v)v.classList.add('on');
-  ({pipeline:drawPipeline,matters:drawMatters,editor:drawEditor,dashboard:drawDash,intake:drawIntake})[S.view]?.();
+  ({pipeline:drawPipeline,matters:drawMatters,editor:drawEditor,dashboard:drawDash,intake:drawIntake,data:drawData})[S.view]?.();
 }
 
 /* ═══ UTILS ═══ */
@@ -613,7 +638,7 @@ function drawEditor(){
     {t:'Lead Attorney',f:[['ATTORNEY_1_NAME','Name'],['ATTORNEY_1_BAR','Bar #'],['ATTORNEY_1_FIRM','Firm'],['ATTORNEY_1_ADDR','Address',1],['ATTORNEY_1_PHONE','Phone'],['ATTORNEY_1_EMAIL','Email']]},
     {t:'Co-Counsel',f:[['ATTORNEY_2_NAME','Name'],['ATTORNEY_2_BAR','Bar #'],['ATTORNEY_2_FIRM','Firm'],['ATTORNEY_2_ADDR','Address',1],['ATTORNEY_2_PHONE','Phone'],['ATTORNEY_2_EMAIL','Email']]},
   ];
-  const sideHTML=secs.map(sec=>`<div class="ess"><div class="chd">${sec.t}</div>${sec.f.map(([key,label,ta])=>`<div class="fld"><label>${label} <code>{{${key}}}</code></label>${ta?`<textarea data-v="${key}" oninput="edLive()">${esc(v[key]||'')}</textarea>`:`<input data-v="${key}" value="${esc(v[key]||'')}" oninput="edLive()">`}</div>`).join('')}</div>`).join('');
+  const sideHTML=secs.map(sec=>`<div class="ess"><div class="chd">${sec.t}</div>${sec.f.map(([key,label,ta])=>`<div class="fld"><label>${label} <code>{{${key}}}</code></label>${edRefField(key,v[key]||'',ta)}</div>`).join('')}</div>`).join('');
   const si=STAGES.indexOf(m.stage||'Intake');
   const next=si<STAGES.length-1?STAGES[si+1]:null;
   const isMock=m.id&&m.id.startsWith('mock_');
@@ -635,6 +660,90 @@ function drawEditor(){
     <div class="em"><div class="doc" id="docPv">${S.tpl?tplR(S.tpl.html,v):'<div class="empty">No template loaded for this circuit.</div>'}</div></div>
   </div>`;
   edCt();
+}
+/* Editor field: renders a select for reference fields, plain input/textarea otherwise */
+function edRefField(key,val,ta){
+  const selFields={
+    'DETENTION_FACILITY':{list:()=>REF.facilities,vk:'name',onChange:'edFacChange()'},
+    'FACILITY_LOCATION':{linked:true},
+    'WARDEN_NAME':{list:()=>REF.wardens,vk:'name',onChange:'edWardenChange()'},
+    'FOD_NAME':{linked:true},
+    'FIELD_OFFICE':{list:()=>REF.fieldOffices,vk:'name',onChange:'edFOChange()'},
+    'ICE_DIRECTOR':{list:()=>REF.officials.filter(o=>o.title==="ICE Director"),vk:'name'},
+    'DHS_SECRETARY':{list:()=>REF.officials.filter(o=>o.title==="DHS Secretary"),vk:'name'},
+    'AG_NAME':{list:()=>REF.officials.filter(o=>o.title==="Attorney General"),vk:'name'},
+    'DISTRICT_FULL':{list:()=>REF.courts,vk:'district',onChange:'edCourtChange()'},
+    'DIVISION':{linked:true},
+    'COURT_LOCATION':{linked:true},
+    'ATTORNEY_1_NAME':{list:()=>REF.attorneys,vk:'name',onChange:'edAtt1Change()'},
+    'ATTORNEY_1_BAR':{linked:true},
+    'ATTORNEY_1_FIRM':{linked:true},
+    'ATTORNEY_1_ADDR':{linked:true},
+    'ATTORNEY_1_PHONE':{linked:true},
+    'ATTORNEY_1_EMAIL':{linked:true},
+    'ATTORNEY_2_NAME':{list:()=>REF.attorneys,vk:'name',onChange:'edAtt2Change()'},
+    'ATTORNEY_2_BAR':{linked:true},
+    'ATTORNEY_2_FIRM':{linked:true},
+    'ATTORNEY_2_ADDR':{linked:true},
+    'ATTORNEY_2_PHONE':{linked:true},
+    'ATTORNEY_2_EMAIL':{linked:true},
+  };
+  const cfg=selFields[key];
+  if(!cfg)return ta?`<textarea data-v="${key}" oninput="edLive()">${esc(val)}</textarea>`:`<input data-v="${key}" value="${esc(val)}" oninput="edLive()">`;
+  if(cfg.linked)return`<input data-v="${key}" value="${esc(val)}" oninput="edLive()" style="background:var(--bg)" readonly>`;
+  const items=cfg.list();
+  const opts=items.map(r=>{const rv=typeof cfg.vk==='function'?cfg.vk(r):r[cfg.vk];return`<option value="${esc(rv)}"${rv===val?' selected':''}>${esc(rv)}</option>`}).join('');
+  const oc=cfg.onChange?cfg.onChange:'';
+  return`<select data-v="${key}" onchange="edLive();${oc}" style="width:100%;padding:6px 8px;border:1px solid var(--bd);border-radius:4px;background:var(--sf);font-size:13px"><option value="">— Select —</option>${opts}</select>`;
+}
+/* Editor auto-fill when selecting from reference data */
+function edSetV(key,val){const el=document.querySelector('[data-v="'+key+'"]');if(el)el.value=val}
+function edFacChange(){
+  const fName=document.querySelector('[data-v="DETENTION_FACILITY"]')?.value||'';
+  const fac=REF.facilities.find(f=>f.name===fName);
+  edSetV('FACILITY_LOCATION',fac?.location||'');
+  // Filter wardens shown to this facility
+  const warSel=document.querySelector('[data-v="WARDEN_NAME"]');
+  if(warSel){
+    const wardensAtFac=fName?REF.wardens.filter(w=>w.facility===fName):REF.wardens;
+    const cur=warSel.value;
+    warSel.innerHTML='<option value="">— Select —</option>'+wardensAtFac.map(w=>`<option value="${esc(w.name)}"${w.name===cur?' selected':''}>${esc(w.name)}</option>`).join('');
+  }
+  edLive();
+}
+function edWardenChange(){}
+function edFOChange(){
+  const foName=document.querySelector('[data-v="FIELD_OFFICE"]')?.value||'';
+  const fo=REF.fieldOffices.find(f=>f.name===foName);
+  edSetV('FOD_NAME',fo?.director||'');
+  edLive();
+}
+function edCourtChange(){
+  const dist=document.querySelector('[data-v="DISTRICT_FULL"]')?.value||'';
+  const court=REF.courts.find(c=>c.district===dist);
+  edSetV('DIVISION',court?.division||'');
+  edSetV('COURT_LOCATION',court?.location||'');
+  edLive();
+}
+function edAtt1Change(){
+  const name=document.querySelector('[data-v="ATTORNEY_1_NAME"]')?.value||'';
+  const att=REF.attorneys.find(a=>a.name===name);
+  edSetV('ATTORNEY_1_BAR',att?.bar||'');
+  edSetV('ATTORNEY_1_FIRM',att?.firm||'');
+  edSetV('ATTORNEY_1_ADDR',att?.addr||'');
+  edSetV('ATTORNEY_1_PHONE',att?.phone||'');
+  edSetV('ATTORNEY_1_EMAIL',att?.email||'');
+  edLive();
+}
+function edAtt2Change(){
+  const name=document.querySelector('[data-v="ATTORNEY_2_NAME"]')?.value||'';
+  const att=REF.attorneys.find(a=>a.name===name);
+  edSetV('ATTORNEY_2_BAR',att?.bar||'');
+  edSetV('ATTORNEY_2_FIRM',att?.firm||'');
+  edSetV('ATTORNEY_2_ADDR',att?.addr||'');
+  edSetV('ATTORNEY_2_PHONE',att?.phone||'');
+  edSetV('ATTORNEY_2_EMAIL',att?.email||'');
+  edLive();
 }
 function edV(){const o={};document.querySelectorAll('[data-v]').forEach(e=>{o[e.dataset.v]=e.value||''});return o}
 function edLive(){const p=document.getElementById('docPv');if(p&&S.tpl)p.innerHTML=tplR(S.tpl.html,edV());edCt()}
@@ -866,9 +975,22 @@ function drawDash(){
 
 /* ═══ INTAKE ═══ */
 function drawIntake(){
+  const facSel=refSelect(REF.facilities,'name','','i_fac','intakeFacChange()');
+  const warSel=refSelect(REF.wardens,'name','','i_war','');
+  const foSel=refSelect(REF.fieldOffices,'name','','i_fo','intakeFOChange()');
+  const courtSel=refSelect(REF.courts,'district','','i_court','intakeCourtChange()');
+  const att1Sel=refSelect(REF.attorneys,'name','','i_att1','intakeAtt1Change()');
+  const att2Sel=refSelect(REF.attorneys,'name','','i_att2','intakeAtt2Change()');
+  const iceOpts=REF.officials.filter(o=>o.title==='ICE Director');
+  const dhsOpts=REF.officials.filter(o=>o.title==='DHS Secretary');
+  const agOpts=REF.officials.filter(o=>o.title==='Attorney General');
+  const iceSel=refSelect(iceOpts,'name','','i_ice','');
+  const dhsSel=refSelect(dhsOpts,'name','','i_dhs','');
+  const agSel=refSelect(agOpts,'name','','i_ag','');
   document.getElementById('v-intake').innerHTML=`<div class="card" style="max-width:720px;padding:20px 24px">
     <div style="font-size:15px;font-weight:700;margin-bottom:2px">New Matter</div>
-    <p style="font-size:12px;color:var(--ink4);margin-bottom:16px">Enter client info. Facility and warden are deduped automatically.</p>
+    <p style="font-size:12px;color:var(--ink4);margin-bottom:16px">Select from reference data or type new values. <a href="#" onclick="go('data');return false">Manage reference data \u2192</a></p>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--ink4);margin-bottom:8px;margin-top:4px">Petitioner</div>
     <div class="ig">
       <div class="fld"><label>Petitioner Full Name *</label><input id="i_name" placeholder="Juan Jose Rivera"></div>
       <div class="fld"><label>Country *</label><input id="i_country" placeholder="El Salvador"></div>
@@ -876,16 +998,39 @@ function drawIntake(){
       <div class="fld"><label>Years of Residence</label><input id="i_years" placeholder="twenty"></div>
       <div class="fld"><label>Apprehension Location *</label><input id="i_loc" placeholder="Washington, D.C."></div>
       <div class="fld"><label>Apprehension Date *</label><input type="date" id="i_date"></div>
-      <div class="fld"><label>Detention Facility *</label><input id="i_fac" placeholder="Farmville Detention Center"></div>
-      <div class="fld"><label>Facility Location</label><input id="i_floc" placeholder="Farmville, Virginia"></div>
-      <div class="fld"><label>Warden</label><input id="i_war" placeholder="Jeff Crawford"></div>
+    </div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--ink4);margin-bottom:8px;margin-top:12px">Detention</div>
+    <div class="ig">
+      <div class="fld"><label>Detention Facility *</label>${facSel}</div>
+      <div class="fld"><label>Facility Location</label><input id="i_floc" placeholder="Farmville, Virginia" readonly style="background:var(--bg)"></div>
+      <div class="fld"><label>Warden</label>${warSel}</div>
+    </div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--ink4);margin-bottom:8px;margin-top:12px">Court &amp; Jurisdiction</div>
+    <div class="ig">
       <div class="fld"><label>Circuit *</label><select id="i_circ"><option value="">\u2014 Select \u2014</option>
         <option>1st Circuit</option><option>2nd Circuit</option><option>3rd Circuit</option><option>4th Circuit</option>
         <option>5th Circuit</option><option>6th Circuit</option><option>7th Circuit</option><option>8th Circuit</option>
         <option>9th Circuit</option><option>10th Circuit</option><option>11th Circuit</option><option>D.C. Circuit</option>
       </select></div>
-      <div class="fld"><label>ICE Field Office</label><input id="i_fo" placeholder="Washington Field Office"></div>
-      <div class="fld"><label>Field Office Director</label><input id="i_fod" placeholder="Russell Hott"></div>
+      <div class="fld"><label>District Court</label>${courtSel}</div>
+      <div class="fld"><label>Division</label><input id="i_division" placeholder="Alexandria Division" readonly style="background:var(--bg)"></div>
+      <div class="fld"><label>Court Location</label><input id="i_cloc" placeholder="Alexandria, Virginia" readonly style="background:var(--bg)"></div>
+    </div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--ink4);margin-bottom:8px;margin-top:12px">Respondents</div>
+    <div class="ig">
+      <div class="fld"><label>ICE Field Office</label>${foSel}</div>
+      <div class="fld"><label>Field Office Director</label><input id="i_fod" placeholder="Russell Hott" readonly style="background:var(--bg)"></div>
+      <div class="fld"><label>ICE Director</label>${iceSel}</div>
+      <div class="fld"><label>DHS Secretary</label>${dhsSel}</div>
+      <div class="fld"><label>Attorney General</label>${agSel}</div>
+    </div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--ink4);margin-bottom:8px;margin-top:12px">Attorneys</div>
+    <div class="ig">
+      <div class="fld"><label>Lead Attorney</label>${att1Sel}</div>
+      <div class="fld"><label>Co-Counsel</label>${att2Sel}</div>
+    </div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--ink4);margin-bottom:8px;margin-top:12px">Case Details</div>
+    <div class="ig">
       <div class="fld ifl"><label>Criminal History Statement</label><input id="i_crim" placeholder="has never been arrested or charged with any crime"></div>
       <div class="fld ifl"><label>Community Ties</label><textarea id="i_ties" placeholder="Family, employment, community connections\u2026"></textarea></div>
     </div>
@@ -895,12 +1040,471 @@ function drawIntake(){
     </div>
   </div>`;
 }
+/* Intake auto-fill helpers */
+function intakeFacChange(){
+  const fName=document.getElementById('i_fac')?.value||'';
+  const fac=REF.facilities.find(f=>f.name===fName);
+  const floc=document.getElementById('i_floc');
+  if(floc)floc.value=fac?.location||'';
+  // Also filter wardens to those at this facility
+  const warSel=document.getElementById('i_war');
+  if(warSel){
+    const wardensAtFac=fName?REF.wardens.filter(w=>w.facility===fName):REF.wardens;
+    const cur=warSel.value;
+    warSel.innerHTML='<option value="">— Select —</option>'+wardensAtFac.map(w=>`<option value="${esc(w.name)}"${w.name===cur?' selected':''}>${esc(w.name)}</option>`).join('');
+  }
+}
+function intakeFOChange(){
+  const foName=document.getElementById('i_fo')?.value||'';
+  const fo=REF.fieldOffices.find(f=>f.name===foName);
+  const fod=document.getElementById('i_fod');
+  if(fod)fod.value=fo?.director||'';
+}
+function intakeCourtChange(){
+  const dist=document.getElementById('i_court')?.value||'';
+  const court=REF.courts.find(c=>c.district===dist);
+  const div=document.getElementById('i_division');
+  const loc=document.getElementById('i_cloc');
+  if(div)div.value=court?.division||'';
+  if(loc)loc.value=court?.location||'';
+}
+function intakeAtt1Change(){
+  // Just store the selection; details pulled from ref at submit time
+}
+function intakeAtt2Change(){
+  // Just store the selection; details pulled from ref at submit time
+}
 async function doIntake(){
   const g=id=>(document.getElementById(id)?.value||'').trim();
-  const d={petitionerName:g('i_name'),country:g('i_country'),entryDate:g('i_entry'),yearsResidence:g('i_years'),apprehensionLocation:g('i_loc'),apprehensionDate:g('i_date'),facility:g('i_fac'),facilityLocation:g('i_floc'),warden:g('i_war'),circuit:g('i_circ'),fieldOffice:g('i_fo'),fodName:g('i_fod'),criminalHistory:g('i_crim'),communityTies:g('i_ties')};
+  // Look up attorney details from reference data
+  const att1=REF.attorneys.find(a=>a.name===g('i_att1'));
+  const att2=REF.attorneys.find(a=>a.name===g('i_att2'));
+  const d={
+    petitionerName:g('i_name'),country:g('i_country'),entryDate:g('i_entry'),yearsResidence:g('i_years'),
+    apprehensionLocation:g('i_loc'),apprehensionDate:g('i_date'),
+    facility:g('i_fac'),facilityLocation:g('i_floc'),warden:g('i_war'),
+    circuit:g('i_circ'),
+    district:g('i_court'),division:g('i_division'),courtLocation:g('i_cloc'),
+    fieldOffice:g('i_fo'),fodName:g('i_fod'),
+    iceDirector:g('i_ice'),dhsSecretary:g('i_dhs'),agName:g('i_ag'),
+    attorney1Name:att1?.name||'',attorney1Bar:att1?.bar||'',attorney1Firm:att1?.firm||'',attorney1Addr:att1?.addr||'',attorney1Phone:att1?.phone||'',attorney1Email:att1?.email||'',
+    attorney2Name:att2?.name||'',attorney2Bar:att2?.bar||'',attorney2Firm:att2?.firm||'',attorney2Addr:att2?.addr||'',attorney2Phone:att2?.phone||'',attorney2Email:att2?.email||'',
+    criminalHistory:g('i_crim'),communityTies:g('i_ties')
+  };
   if(!d.petitionerName||!d.country||!d.circuit){toast('Fill in Name, Country, and Circuit.',1);return}
   try{const r=await api('create_matter',d);toast('Matter created');await loadMatters();if(r.recordId)openMatter(r.recordId);else go('pipeline')}
   catch(e){toast('Failed: '+e.message,1)}
+}
+
+/* ═══ REFERENCE DATA STORE ═══ */
+const RK='habeas_refdata';
+let REF=JSON.parse(localStorage.getItem(RK)||'null')||{
+  wardens:[],facilities:[],attorneys:[],fieldOffices:[],courts:[],officials:[]
+};
+function saveRef(){localStorage.setItem(RK,JSON.stringify(REF))}
+function refId(){return'r_'+Date.now()+'_'+Math.random().toString(36).slice(2,7)}
+function refNow(){return new Date().toISOString().slice(0,16).replace('T',' ')}
+function refUser(){return S.user?.email||'unknown'}
+
+/* Seed reference data from existing matters (runs once after matters load) */
+function seedRef(){
+  const seeded=new Set();
+  // Build a set of what's already in ref tables for dedup
+  REF.facilities.forEach(f=>seeded.add('fac:'+f.name));
+  REF.wardens.forEach(w=>seeded.add('war:'+w.name));
+  REF.attorneys.forEach(a=>seeded.add('att:'+a.name));
+  REF.fieldOffices.forEach(fo=>seeded.add('fo:'+fo.name));
+  REF.courts.forEach(c=>seeded.add('crt:'+c.district));
+  REF.officials.forEach(o=>seeded.add('off:'+o.title+':'+o.name));
+
+  const now=refNow(),who='system (seeded from matters)';
+
+  S.matters.forEach(m=>{
+    const v=m.variables||{};
+    // Facilities
+    if(v.DETENTION_FACILITY&&!seeded.has('fac:'+v.DETENTION_FACILITY)){
+      REF.facilities.push({id:refId(),name:v.DETENTION_FACILITY,location:v.FACILITY_LOCATION||'',createdBy:who,createdAt:now,updatedBy:who,updatedAt:now});
+      seeded.add('fac:'+v.DETENTION_FACILITY);
+    }
+    // Wardens
+    if(v.WARDEN_NAME&&!seeded.has('war:'+v.WARDEN_NAME)){
+      REF.wardens.push({id:refId(),name:v.WARDEN_NAME,facility:v.DETENTION_FACILITY||'',createdBy:who,createdAt:now,updatedBy:who,updatedAt:now});
+      seeded.add('war:'+v.WARDEN_NAME);
+    }
+    // Attorneys (lead)
+    if(v.ATTORNEY_1_NAME&&!seeded.has('att:'+v.ATTORNEY_1_NAME)){
+      REF.attorneys.push({id:refId(),name:v.ATTORNEY_1_NAME,bar:v.ATTORNEY_1_BAR||'',firm:v.ATTORNEY_1_FIRM||'',addr:v.ATTORNEY_1_ADDR||'',phone:v.ATTORNEY_1_PHONE||'',email:v.ATTORNEY_1_EMAIL||'',createdBy:who,createdAt:now,updatedBy:who,updatedAt:now});
+      seeded.add('att:'+v.ATTORNEY_1_NAME);
+    }
+    // Attorneys (co-counsel)
+    if(v.ATTORNEY_2_NAME&&!seeded.has('att:'+v.ATTORNEY_2_NAME)){
+      REF.attorneys.push({id:refId(),name:v.ATTORNEY_2_NAME,bar:v.ATTORNEY_2_BAR||'',firm:v.ATTORNEY_2_FIRM||'',addr:v.ATTORNEY_2_ADDR||'',phone:v.ATTORNEY_2_PHONE||'',email:v.ATTORNEY_2_EMAIL||'',createdBy:who,createdAt:now,updatedBy:who,updatedAt:now});
+      seeded.add('att:'+v.ATTORNEY_2_NAME);
+    }
+    // Field Offices
+    if(v.FIELD_OFFICE&&!seeded.has('fo:'+v.FIELD_OFFICE)){
+      REF.fieldOffices.push({id:refId(),name:v.FIELD_OFFICE,director:v.FOD_NAME||'',createdBy:who,createdAt:now,updatedBy:who,updatedAt:now});
+      seeded.add('fo:'+v.FIELD_OFFICE);
+    }
+    // Courts
+    if(v.DISTRICT_FULL&&!seeded.has('crt:'+v.DISTRICT_FULL)){
+      REF.courts.push({id:refId(),district:v.DISTRICT_FULL,division:v.DIVISION||'',location:v.COURT_LOCATION||'',createdBy:who,createdAt:now,updatedBy:who,updatedAt:now});
+      seeded.add('crt:'+v.DISTRICT_FULL);
+    }
+    // Officials
+    const offs=[
+      {title:'ICE Director',name:v.ICE_DIRECTOR},
+      {title:'DHS Secretary',name:v.DHS_SECRETARY},
+      {title:'Attorney General',name:v.AG_NAME}
+    ];
+    offs.forEach(o=>{
+      if(o.name&&!seeded.has('off:'+o.title+':'+o.name)){
+        REF.officials.push({id:refId(),title:o.title,name:o.name,effectiveDate:'',createdBy:who,createdAt:now,updatedBy:who,updatedAt:now});
+        seeded.add('off:'+o.title+':'+o.name);
+      }
+    });
+  });
+  saveRef();
+}
+
+/* ═══ DATA TAB STATE ═══ */
+let dataTab='wardens';
+let dataForm=null; // null or {type:'add'|'edit', id:null|string}
+
+function provHTML(rec){
+  return`<div class="prov">Created by <span class="who">${esc(rec.createdBy)}</span><span class="when">${esc(rec.createdAt)}</span></div>`
+    +`<div class="prov">Updated by <span class="who">${esc(rec.updatedBy)}</span><span class="when">${esc(rec.updatedAt)}</span></div>`;
+}
+
+function drawData(){
+  const el=document.getElementById('v-data');
+  const tabs=[
+    {id:'wardens',l:'Wardens',ct:REF.wardens.length},
+    {id:'facilities',l:'Facilities',ct:REF.facilities.length},
+    {id:'attorneys',l:'Attorneys',ct:REF.attorneys.length},
+    {id:'fieldOffices',l:'Field Offices',ct:REF.fieldOffices.length},
+    {id:'courts',l:'Courts',ct:REF.courts.length},
+    {id:'officials',l:'Officials',ct:REF.officials.length}
+  ];
+  const tabsHTML=tabs.map(t=>`<button class="dtab${dataTab===t.id?' on':''}" onclick="dataTab='${t.id}';dataForm=null;drawData()">${t.l}<span class="dct">${t.ct}</span></button>`).join('');
+
+  let content='';
+  if(dataTab==='wardens')content=drawWardens();
+  else if(dataTab==='facilities')content=drawFacilities();
+  else if(dataTab==='attorneys')content=drawAttorneys();
+  else if(dataTab==='fieldOffices')content=drawFieldOffices();
+  else if(dataTab==='courts')content=drawCourts();
+  else if(dataTab==='officials')content=drawOfficials();
+
+  el.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <div style="font-size:15px;font-weight:700">Reference Data</div>
+    <div style="font-size:11px;color:var(--ink4)">Aggregated lookup tables with provenance tracking</div>
+  </div>
+  <div class="dtabs">${tabsHTML}</div>
+  ${content}`;
+}
+
+/* ═══ WARDENS TABLE ═══ */
+function drawWardens(){
+  const form=dataForm?.type&&dataTab==='wardens'?drawWardenForm():'';
+  const rows=REF.wardens.map(w=>{
+    const facMatch=REF.facilities.find(f=>f.name===w.facility);
+    const matterCt=S.matters.filter(m=>(m.variables||{}).WARDEN_NAME===w.name).length;
+    return`<tr>
+      <td style="font-weight:600">${esc(w.name)}</td>
+      <td>${w.facility?`<span class="linked">${esc(w.facility)}</span>`:'\u2014'}</td>
+      <td>${facMatch?esc(facMatch.location):'\u2014'}</td>
+      <td>${matterCt}</td>
+      <td>${provHTML(w)}</td>
+      <td><button class="btn btn-sm" onclick="editRef('wardens','${w.id}')">Edit</button> <button class="btn btn-sm" onclick="delRef('wardens','${w.id}')">Del</button></td>
+    </tr>`;
+  }).join('');
+  return`<div class="dbtn-row"><button class="btn btn-ac btn-sm" onclick="addRef('wardens')">+ Add Warden</button></div>
+    ${form}
+    <div class="card" style="padding:0;overflow-x:auto"><table class="dtbl">
+    <thead><tr><th>Name</th><th>Facility</th><th>Location</th><th>Matters</th><th>Provenance</th><th></th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="6" class="empty">No wardens. Add one or create a matter to seed data.</td></tr>'}</tbody></table></div>`;
+}
+function drawWardenForm(){
+  const rec=dataForm.type==='edit'?REF.wardens.find(w=>w.id===dataForm.id):null;
+  const facOpts=REF.facilities.map(f=>`<option value="${esc(f.name)}"${rec&&rec.facility===f.name?' selected':''}>${esc(f.name)}</option>`).join('');
+  return`<div class="dform">
+    <div class="fld"><label>Warden Name *</label><input id="df_name" value="${esc(rec?.name||'')}"></div>
+    <div class="fld"><label>Facility</label><select id="df_facility"><option value="">— Select —</option>${facOpts}</select></div>
+    <div class="dform-full" style="display:flex;gap:6px;margin-top:4px">
+      <button class="btn btn-ac btn-sm" onclick="saveWarden(${rec?`'${rec.id}'`:'null'})">${rec?'Update':'Add'} Warden</button>
+      <button class="btn btn-sm" onclick="dataForm=null;drawData()">Cancel</button>
+    </div>
+  </div>`;
+}
+function saveWarden(id){
+  const name=(document.getElementById('df_name')?.value||'').trim();
+  const facility=(document.getElementById('df_facility')?.value||'').trim();
+  if(!name){toast('Warden name is required.',1);return}
+  const now=refNow(),who=refUser();
+  if(id){
+    const w=REF.wardens.find(r=>r.id===id);
+    if(w){w.name=name;w.facility=facility;w.updatedBy=who;w.updatedAt=now}
+  } else {
+    REF.wardens.push({id:refId(),name,facility,createdBy:who,createdAt:now,updatedBy:who,updatedAt:now});
+  }
+  saveRef();dataForm=null;drawData();toast(id?'Warden updated':'Warden added');
+}
+
+/* ═══ FACILITIES TABLE ═══ */
+function drawFacilities(){
+  const form=dataForm?.type&&dataTab==='facilities'?drawFacilityForm():'';
+  const rows=REF.facilities.map(f=>{
+    const wardens=REF.wardens.filter(w=>w.facility===f.name);
+    const matterCt=S.matters.filter(m=>(m.variables||{}).DETENTION_FACILITY===f.name).length;
+    return`<tr>
+      <td style="font-weight:600">${esc(f.name)}</td>
+      <td>${esc(f.location)||'\u2014'}</td>
+      <td>${wardens.length?wardens.map(w=>`<span class="linked">${esc(w.name)}</span>`).join(' '):'\u2014'}</td>
+      <td>${matterCt}</td>
+      <td>${provHTML(f)}</td>
+      <td><button class="btn btn-sm" onclick="editRef('facilities','${f.id}')">Edit</button> <button class="btn btn-sm" onclick="delRef('facilities','${f.id}')">Del</button></td>
+    </tr>`;
+  }).join('');
+  return`<div class="dbtn-row"><button class="btn btn-ac btn-sm" onclick="addRef('facilities')">+ Add Facility</button></div>
+    ${form}
+    <div class="card" style="padding:0;overflow-x:auto"><table class="dtbl">
+    <thead><tr><th>Facility</th><th>Location</th><th>Wardens</th><th>Matters</th><th>Provenance</th><th></th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="6" class="empty">No facilities.</td></tr>'}</tbody></table></div>`;
+}
+function drawFacilityForm(){
+  const rec=dataForm.type==='edit'?REF.facilities.find(f=>f.id===dataForm.id):null;
+  return`<div class="dform">
+    <div class="fld"><label>Facility Name *</label><input id="df_name" value="${esc(rec?.name||'')}"></div>
+    <div class="fld"><label>Location (City, State)</label><input id="df_location" value="${esc(rec?.location||'')}"></div>
+    <div class="dform-full" style="display:flex;gap:6px;margin-top:4px">
+      <button class="btn btn-ac btn-sm" onclick="saveFacility(${rec?`'${rec.id}'`:'null'})">${rec?'Update':'Add'} Facility</button>
+      <button class="btn btn-sm" onclick="dataForm=null;drawData()">Cancel</button>
+    </div>
+  </div>`;
+}
+function saveFacility(id){
+  const name=(document.getElementById('df_name')?.value||'').trim();
+  const location=(document.getElementById('df_location')?.value||'').trim();
+  if(!name){toast('Facility name is required.',1);return}
+  const now=refNow(),who=refUser();
+  if(id){
+    const f=REF.facilities.find(r=>r.id===id);
+    if(f){f.name=name;f.location=location;f.updatedBy=who;f.updatedAt=now}
+  } else {
+    REF.facilities.push({id:refId(),name,location,createdBy:who,createdAt:now,updatedBy:who,updatedAt:now});
+  }
+  saveRef();dataForm=null;drawData();toast(id?'Facility updated':'Facility added');
+}
+
+/* ═══ ATTORNEYS TABLE ═══ */
+function drawAttorneys(){
+  const form=dataForm?.type&&dataTab==='attorneys'?drawAttorneyForm():'';
+  const rows=REF.attorneys.map(a=>{
+    const matterCt=S.matters.filter(m=>{const v=m.variables||{};return v.ATTORNEY_1_NAME===a.name||v.ATTORNEY_2_NAME===a.name}).length;
+    return`<tr>
+      <td style="font-weight:600">${esc(a.name)}</td>
+      <td>${esc(a.bar)||'\u2014'}</td>
+      <td>${esc(a.firm)||'\u2014'}</td>
+      <td>${esc(a.email)||'\u2014'}</td>
+      <td>${matterCt}</td>
+      <td>${provHTML(a)}</td>
+      <td><button class="btn btn-sm" onclick="editRef('attorneys','${a.id}')">Edit</button> <button class="btn btn-sm" onclick="delRef('attorneys','${a.id}')">Del</button></td>
+    </tr>`;
+  }).join('');
+  return`<div class="dbtn-row"><button class="btn btn-ac btn-sm" onclick="addRef('attorneys')">+ Add Attorney</button></div>
+    ${form}
+    <div class="card" style="padding:0;overflow-x:auto"><table class="dtbl">
+    <thead><tr><th>Name</th><th>Bar #</th><th>Firm</th><th>Email</th><th>Matters</th><th>Provenance</th><th></th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="7" class="empty">No attorneys.</td></tr>'}</tbody></table></div>`;
+}
+function drawAttorneyForm(){
+  const rec=dataForm.type==='edit'?REF.attorneys.find(a=>a.id===dataForm.id):null;
+  return`<div class="dform">
+    <div class="fld"><label>Name *</label><input id="df_name" value="${esc(rec?.name||'')}"></div>
+    <div class="fld"><label>Bar #</label><input id="df_bar" value="${esc(rec?.bar||'')}"></div>
+    <div class="fld"><label>Firm</label><input id="df_firm" value="${esc(rec?.firm||'')}"></div>
+    <div class="fld"><label>Email</label><input id="df_email" value="${esc(rec?.email||'')}"></div>
+    <div class="fld"><label>Phone</label><input id="df_phone" value="${esc(rec?.phone||'')}"></div>
+    <div class="fld dform-full"><label>Address</label><input id="df_addr" value="${esc(rec?.addr||'')}"></div>
+    <div class="dform-full" style="display:flex;gap:6px;margin-top:4px">
+      <button class="btn btn-ac btn-sm" onclick="saveAttorney(${rec?`'${rec.id}'`:'null'})">${rec?'Update':'Add'} Attorney</button>
+      <button class="btn btn-sm" onclick="dataForm=null;drawData()">Cancel</button>
+    </div>
+  </div>`;
+}
+function saveAttorney(id){
+  const g=x=>(document.getElementById(x)?.value||'').trim();
+  const name=g('df_name'),bar=g('df_bar'),firm=g('df_firm'),email=g('df_email'),phone=g('df_phone'),addr=g('df_addr');
+  if(!name){toast('Attorney name is required.',1);return}
+  const now=refNow(),who=refUser();
+  if(id){
+    const a=REF.attorneys.find(r=>r.id===id);
+    if(a){Object.assign(a,{name,bar,firm,email,phone,addr,updatedBy:who,updatedAt:now})}
+  } else {
+    REF.attorneys.push({id:refId(),name,bar,firm,email,phone,addr,createdBy:who,createdAt:now,updatedBy:who,updatedAt:now});
+  }
+  saveRef();dataForm=null;drawData();toast(id?'Attorney updated':'Attorney added');
+}
+
+/* ═══ FIELD OFFICES TABLE ═══ */
+function drawFieldOffices(){
+  const form=dataForm?.type&&dataTab==='fieldOffices'?drawFieldOfficeForm():'';
+  const rows=REF.fieldOffices.map(fo=>{
+    const matterCt=S.matters.filter(m=>(m.variables||{}).FIELD_OFFICE===fo.name).length;
+    return`<tr>
+      <td style="font-weight:600">${esc(fo.name)}</td>
+      <td>${esc(fo.director)||'\u2014'}</td>
+      <td>${matterCt}</td>
+      <td>${provHTML(fo)}</td>
+      <td><button class="btn btn-sm" onclick="editRef('fieldOffices','${fo.id}')">Edit</button> <button class="btn btn-sm" onclick="delRef('fieldOffices','${fo.id}')">Del</button></td>
+    </tr>`;
+  }).join('');
+  return`<div class="dbtn-row"><button class="btn btn-ac btn-sm" onclick="addRef('fieldOffices')">+ Add Field Office</button></div>
+    ${form}
+    <div class="card" style="padding:0;overflow-x:auto"><table class="dtbl">
+    <thead><tr><th>Office</th><th>Director (FOD)</th><th>Matters</th><th>Provenance</th><th></th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="5" class="empty">No field offices.</td></tr>'}</tbody></table></div>`;
+}
+function drawFieldOfficeForm(){
+  const rec=dataForm.type==='edit'?REF.fieldOffices.find(f=>f.id===dataForm.id):null;
+  return`<div class="dform">
+    <div class="fld"><label>Field Office Name *</label><input id="df_name" value="${esc(rec?.name||'')}"></div>
+    <div class="fld"><label>Director (FOD)</label><input id="df_director" value="${esc(rec?.director||'')}"></div>
+    <div class="dform-full" style="display:flex;gap:6px;margin-top:4px">
+      <button class="btn btn-ac btn-sm" onclick="saveFieldOffice(${rec?`'${rec.id}'`:'null'})">${rec?'Update':'Add'} Field Office</button>
+      <button class="btn btn-sm" onclick="dataForm=null;drawData()">Cancel</button>
+    </div>
+  </div>`;
+}
+function saveFieldOffice(id){
+  const name=(document.getElementById('df_name')?.value||'').trim();
+  const director=(document.getElementById('df_director')?.value||'').trim();
+  if(!name){toast('Field Office name is required.',1);return}
+  const now=refNow(),who=refUser();
+  if(id){
+    const fo=REF.fieldOffices.find(r=>r.id===id);
+    if(fo){fo.name=name;fo.director=director;fo.updatedBy=who;fo.updatedAt=now}
+  } else {
+    REF.fieldOffices.push({id:refId(),name,director,createdBy:who,createdAt:now,updatedBy:who,updatedAt:now});
+  }
+  saveRef();dataForm=null;drawData();toast(id?'Field Office updated':'Field Office added');
+}
+
+/* ═══ COURTS TABLE ═══ */
+function drawCourts(){
+  const form=dataForm?.type&&dataTab==='courts'?drawCourtForm():'';
+  const rows=REF.courts.map(c=>{
+    const matterCt=S.matters.filter(m=>(m.variables||{}).DISTRICT_FULL===c.district).length;
+    return`<tr>
+      <td style="font-weight:600">${esc(c.district)}</td>
+      <td>${esc(c.division)||'\u2014'}</td>
+      <td>${esc(c.location)||'\u2014'}</td>
+      <td>${matterCt}</td>
+      <td>${provHTML(c)}</td>
+      <td><button class="btn btn-sm" onclick="editRef('courts','${c.id}')">Edit</button> <button class="btn btn-sm" onclick="delRef('courts','${c.id}')">Del</button></td>
+    </tr>`;
+  }).join('');
+  return`<div class="dbtn-row"><button class="btn btn-ac btn-sm" onclick="addRef('courts')">+ Add Court</button></div>
+    ${form}
+    <div class="card" style="padding:0;overflow-x:auto"><table class="dtbl">
+    <thead><tr><th>District</th><th>Division</th><th>Location</th><th>Matters</th><th>Provenance</th><th></th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="6" class="empty">No courts.</td></tr>'}</tbody></table></div>`;
+}
+function drawCourtForm(){
+  const rec=dataForm.type==='edit'?REF.courts.find(c=>c.id===dataForm.id):null;
+  return`<div class="dform">
+    <div class="fld"><label>District *</label><input id="df_district" value="${esc(rec?.district||'')}" placeholder="Eastern District of Virginia"></div>
+    <div class="fld"><label>Division</label><input id="df_division" value="${esc(rec?.division||'')}" placeholder="Alexandria Division"></div>
+    <div class="fld"><label>Location</label><input id="df_location" value="${esc(rec?.location||'')}" placeholder="Alexandria, Virginia"></div>
+    <div class="dform-full" style="display:flex;gap:6px;margin-top:4px">
+      <button class="btn btn-ac btn-sm" onclick="saveCourt(${rec?`'${rec.id}'`:'null'})">${rec?'Update':'Add'} Court</button>
+      <button class="btn btn-sm" onclick="dataForm=null;drawData()">Cancel</button>
+    </div>
+  </div>`;
+}
+function saveCourt(id){
+  const g=x=>(document.getElementById(x)?.value||'').trim();
+  const district=g('df_district'),division=g('df_division'),location=g('df_location');
+  if(!district){toast('District is required.',1);return}
+  const now=refNow(),who=refUser();
+  if(id){
+    const c=REF.courts.find(r=>r.id===id);
+    if(c){Object.assign(c,{district,division,location,updatedBy:who,updatedAt:now})}
+  } else {
+    REF.courts.push({id:refId(),district,division,location,createdBy:who,createdAt:now,updatedBy:who,updatedAt:now});
+  }
+  saveRef();dataForm=null;drawData();toast(id?'Court updated':'Court added');
+}
+
+/* ═══ OFFICIALS TABLE ═══ */
+function drawOfficials(){
+  const form=dataForm?.type&&dataTab==='officials'?drawOfficialForm():'';
+  const rows=REF.officials.map(o=>{
+    const varKey=o.title==='ICE Director'?'ICE_DIRECTOR':o.title==='DHS Secretary'?'DHS_SECRETARY':o.title==='Attorney General'?'AG_NAME':'';
+    const matterCt=varKey?S.matters.filter(m=>(m.variables||{})[varKey]===o.name).length:0;
+    return`<tr>
+      <td style="font-weight:600">${esc(o.title)}</td>
+      <td>${esc(o.name)}</td>
+      <td>${esc(o.effectiveDate)||'\u2014'}</td>
+      <td>${matterCt}</td>
+      <td>${provHTML(o)}</td>
+      <td><button class="btn btn-sm" onclick="editRef('officials','${o.id}')">Edit</button> <button class="btn btn-sm" onclick="delRef('officials','${o.id}')">Del</button></td>
+    </tr>`;
+  }).join('');
+  return`<div class="dbtn-row"><button class="btn btn-ac btn-sm" onclick="addRef('officials')">+ Add Official</button></div>
+    ${form}
+    <div class="card" style="padding:0;overflow-x:auto"><table class="dtbl">
+    <thead><tr><th>Title</th><th>Name</th><th>Effective Date</th><th>Matters</th><th>Provenance</th><th></th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="6" class="empty">No officials.</td></tr>'}</tbody></table></div>`;
+}
+function drawOfficialForm(){
+  const rec=dataForm.type==='edit'?REF.officials.find(o=>o.id===dataForm.id):null;
+  return`<div class="dform">
+    <div class="fld"><label>Title *</label><select id="df_title">
+      <option value="">— Select —</option>
+      <option value="ICE Director"${rec?.title==='ICE Director'?' selected':''}>ICE Director</option>
+      <option value="DHS Secretary"${rec?.title==='DHS Secretary'?' selected':''}>DHS Secretary</option>
+      <option value="Attorney General"${rec?.title==='Attorney General'?' selected':''}>Attorney General</option>
+    </select></div>
+    <div class="fld"><label>Name *</label><input id="df_name" value="${esc(rec?.name||'')}"></div>
+    <div class="fld"><label>Effective Date</label><input id="df_date" value="${esc(rec?.effectiveDate||'')}" placeholder="January 2025"></div>
+    <div class="dform-full" style="display:flex;gap:6px;margin-top:4px">
+      <button class="btn btn-ac btn-sm" onclick="saveOfficial(${rec?`'${rec.id}'`:'null'})">${rec?'Update':'Add'} Official</button>
+      <button class="btn btn-sm" onclick="dataForm=null;drawData()">Cancel</button>
+    </div>
+  </div>`;
+}
+function saveOfficial(id){
+  const g=x=>(document.getElementById(x)?.value||'').trim();
+  const title=g('df_title'),name=g('df_name'),effectiveDate=g('df_date');
+  if(!title||!name){toast('Title and name are required.',1);return}
+  const now=refNow(),who=refUser();
+  if(id){
+    const o=REF.officials.find(r=>r.id===id);
+    if(o){Object.assign(o,{title,name,effectiveDate,updatedBy:who,updatedAt:now})}
+  } else {
+    REF.officials.push({id:refId(),title,name,effectiveDate,createdBy:who,createdAt:now,updatedBy:who,updatedAt:now});
+  }
+  saveRef();dataForm=null;drawData();toast(id?'Official updated':'Official added');
+}
+
+/* ═══ GENERIC REF HELPERS ═══ */
+function addRef(tab){dataTab=tab;dataForm={type:'add',id:null};drawData()}
+function editRef(tab,id){dataTab=tab;dataForm={type:'edit',id};drawData()}
+function delRef(tab,id){
+  if(!confirm('Delete this record?'))return;
+  REF[tab]=REF[tab].filter(r=>r.id!==id);
+  saveRef();drawData();toast('Deleted');
+}
+
+/* ═══ SELECT BUILDERS for intake/editor ═══ */
+function refSelect(list,valKey,selectedVal,inputId,onchangeFn){
+  const opts=list.map(r=>{
+    const val=typeof valKey==='function'?valKey(r):r[valKey];
+    return`<option value="${esc(val)}"${val===selectedVal?' selected':''}>${esc(val)}</option>`;
+  }).join('');
+  return`<select id="${inputId}" ${onchangeFn?`onchange="${onchangeFn}"`:'onchange=""'} style="width:100%;padding:6px 8px;border:1px solid var(--bd);border-radius:4px;background:var(--sf);font-size:13px"><option value="">— Select —</option>${opts}</select>`;
 }
 
 /* ═══ TOAST ═══ */
