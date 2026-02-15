@@ -625,6 +625,7 @@ function drawEditor(){
     <div class="sp"></div>
     <span id="edCt" style="font-size:11px;color:var(--ink4)"></span>
     <button class="btn btn-sm" onclick="edPDF()">\u2193 PDF</button>
+    <button class="btn btn-sm" onclick="edDOCX()">\u2193 Word</button>
     <button class="btn btn-sm" onclick="edMD()">\u2193 Markdown</button>
     <button class="btn btn-sm" onclick="window.print()">\u2399 Print</button>
     ${isMock?'<span class="btn btn-sm" style="opacity:.5;cursor:default">Demo Matter</span>':`<button class="btn btn-ac btn-sm" onclick="edSave()">Save to Airtable</button>`}
@@ -658,21 +659,133 @@ async function edAdv(id,stage){
 function edPDF(){
   const el=document.getElementById('docPv');if(!el)return;
   const name=(S.md?.petitionerName||'petition').replace(/\s+/g,'_');
-  html2pdf().set({margin:[.7,.7],filename:name+'_habeas.pdf',image:{type:'jpeg',quality:.95},html2canvas:{scale:2},jsPDF:{unit:'in',format:'letter'}}).from(el).save();
+  /* Clone the doc and strip variable-highlight styling so the PDF looks like a clean legal filing */
+  const clone=el.cloneNode(true);
+  clone.querySelectorAll('.vs').forEach(sp=>{
+    sp.style.background='none';sp.style.borderBottom='none';sp.style.padding='0';
+    if(!sp.textContent.trim()){sp.textContent=sp.getAttribute('data-p')||'________'}
+  });
+  /* Remove the ::before pseudo-element styling by adding inline overrides */
+  const sty=document.createElement('style');
+  sty.textContent='.vs:empty::before{content:none!important}.vs{background:none!important;border:none!important}';
+  clone.prepend(sty);
+  html2pdf().set({
+    margin:[1,1,1,1],
+    filename:name+'_habeas.pdf',
+    image:{type:'jpeg',quality:.98},
+    html2canvas:{scale:2,useCORS:true,logging:false},
+    jsPDF:{unit:'in',format:'letter',orientation:'portrait'},
+    pagebreak:{mode:['css','legacy'],avoid:['.sig','.cap-tbl','p']}
+  }).from(clone).save().then(()=>toast('PDF downloaded')).catch(e=>toast('PDF failed: '+e.message,1));
 }
 function edMD(){
   const el=document.getElementById('docPv');if(!el)return;
   const name=(S.md?.petitionerName||'petition').replace(/\s+/g,'_');
   let md='';
-  el.querySelectorAll('.ch,.dt,.sh,.cnt,.cnts,p,.sig').forEach(n=>{
-    const t=n.textContent.trim();if(!t)return;
-    if(n.classList.contains('ch')||n.classList.contains('dt'))md+='# '+t+'\n\n';
-    else if(n.classList.contains('sh'))md+='## '+t+'\n\n';
-    else if(n.classList.contains('cnt'))md+='### '+t+'\n\n';
-    else if(n.classList.contains('cnts'))md+='*'+t+'*\n\n';
-    else md+=t+'\n\n';
-  });
+  /* Walk all children in document order to preserve structure */
+  function walkNode(node){
+    if(node.nodeType===3){return}
+    const tag=node.tagName?.toLowerCase()||'';
+    const cl=node.classList||new DOMTokenList();
+    const t=(node.textContent||'').trim();
+    if(!t&&tag!=='tr')return;
+    /* Table: convert to plain-text aligned columns */
+    if(tag==='table'){
+      const rows=node.querySelectorAll('tr');
+      rows.forEach(row=>{
+        const cells=row.querySelectorAll('td,th');
+        const parts=[];cells.forEach(c=>parts.push((c.textContent||'').trim()));
+        const line=parts.filter(Boolean).join(' | ');
+        if(line)md+=line+'\n';
+      });
+      md+='\n';return;
+    }
+    if(cl.contains('ch')||cl.contains('dt')){md+='# '+t+'\n\n';return}
+    if(cl.contains('sh')){md+='## '+t+'\n\n';return}
+    if(cl.contains('cnt')){md+='### '+t+'\n\n';return}
+    if(cl.contains('cnts')){md+='*'+t+'*\n\n';return}
+    if(cl.contains('plist')){
+      node.querySelectorAll('p').forEach(p=>{
+        const pt=p.textContent.trim();if(pt)md+='- '+pt+'\n';
+      });
+      md+='\n';return;
+    }
+    if(cl.contains('sig')){
+      node.querySelectorAll('p').forEach(p=>{
+        const pt=p.textContent.trim();if(pt)md+=pt+'\n';
+      });
+      md+='\n';return;
+    }
+    if(tag==='p'){md+=t+'\n\n';return}
+    /* Divs with style (like the horizontal rule, page break) */
+    if(tag==='div'&&node.style?.borderBottom)return;
+    if(tag==='div'&&node.style?.pageBreakBefore){md+='\n---\n\n';return}
+    /* Generic div: recurse into children */
+    if(tag==='div'){node.childNodes.forEach(c=>walkNode(c));return}
+  }
+  el.childNodes.forEach(c=>walkNode(c));
   const b=new Blob([md],{type:'text/markdown'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name+'_habeas.md';a.click();
+  toast('Markdown downloaded');
+}
+function edDOCX(){
+  const el=document.getElementById('docPv');if(!el)return;
+  const name=(S.md?.petitionerName||'petition').replace(/\s+/g,'_');
+  /* Clone content and strip variable-highlight styling */
+  const clone=el.cloneNode(true);
+  clone.querySelectorAll('.vs').forEach(sp=>{
+    const txt=document.createTextNode(sp.textContent||sp.getAttribute('data-p')||'________');
+    sp.replaceWith(txt);
+  });
+  const docHTML=`<html xmlns:o="urn:schemas-microsoft-com:office:office"
+  xmlns:w="urn:schemas-microsoft-com:office:word"
+  xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="utf-8">
+<meta name="ProgId" content="Word.Document">
+<meta name="Generator" content="Habeas">
+<!--[if gte mso 9]><xml>
+<w:WordDocument>
+<w:View>Print</w:View>
+<w:Zoom>100</w:Zoom>
+<w:DoNotOptimizeForBrowser/>
+</w:WordDocument>
+</xml><![endif]-->
+<style>
+@page {
+  size: 8.5in 11in;
+  margin: 1in 1in 1in 1in;
+  mso-header-margin: 0.5in;
+  mso-footer-margin: 0.5in;
+}
+body {
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 13.5pt;
+  line-height: 1.85;
+  color: #1a1a1a;
+}
+.ch { text-align: center; font-weight: bold; font-size: 13.5pt; margin-bottom: 20px; line-height: 1.5; }
+.dt { text-align: center; font-weight: bold; text-decoration: underline; margin: 20px 0; font-size: 14pt; }
+p { margin-bottom: 11px; text-align: justify; text-indent: 32px; }
+p.ni { text-indent: 0; }
+.sh { font-weight: bold; text-align: center; text-transform: uppercase; letter-spacing: 0.8px; font-size: 12pt; margin: 18px 0 10px; }
+.cnt { font-weight: bold; text-align: center; margin: 18px 0 3px; }
+.cnts { text-align: center; font-style: italic; margin-bottom: 10px; }
+em { font-style: italic; }
+.sig { margin-top: 28px; }
+.cap-tbl { width: 100%; border-collapse: collapse; font-size: 13.5pt; margin-bottom: 8px; }
+.cap-tbl td { padding: 1px 4px; vertical-align: top; }
+.cap-left { width: 55%; }
+.cap-right { width: 10%; text-align: center; }
+.cap-case { width: 35%; padding-left: 12px; }
+.plist { margin: 8px 0 8px 48px; }
+.plist p { text-indent: 0; margin-bottom: 6px; }
+</style>
+</head>
+<body>${clone.innerHTML}</body>
+</html>`;
+  const blob=new Blob(['\ufeff'+docHTML],{type:'application/msword'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name+'_habeas.doc';a.click();
+  toast('Word document downloaded');
 }
 
 /* ═══ DASHBOARD ═══ */
