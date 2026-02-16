@@ -141,6 +141,86 @@ GET /{instance}/stream                 — real-time SSE
 
 `"given"` = observed fact, `"meant"` = human interpretation, `"derived"` = computed
 
+## EOQL — Query Language
+
+Queries are DES operations. The query itself becomes an event in the log.
+
+### Root Commands
+
+| Command | Returns |
+|---------|---------|
+| `state()` | Current projected state of entities |
+| `stream()` | Raw operations from the log |
+
+### Filtering
+
+```
+state(context.table="users")                     — all users
+state(target.id="u1")                            — single entity by ID
+state(context.table="users", target.status="active") — filtered
+stream(op="INS", context.table="users")          — only INS ops on users
+```
+
+### Graph Traversal with `>> CON()`
+
+Chain `>> CON()` after any query to traverse connections:
+
+```
+state(target.id="u1") >> CON()                   — direct connections
+state(target.id="u1") >> CON(hops=2)             — up to 2 hops
+state(target.id="u1") >> CON(hops=2, exclude="accidental")  — skip accidental
+state(target.id="u1") >> CON(stance="essential") — only essential links
+```
+
+### Query via API
+
+```json
+{
+  "op": "DES",
+  "target": { "query": "state(context.table=\"matters\")" },
+  "context": { "type": "query" }
+}
+```
+
+### Subscriptions (Standing Queries)
+
+```json
+{
+  "op": "DES",
+  "target": { "query": "stream(context.table=\"matters\", op=\"INS\")" },
+  "context": { "type": "subscription" }
+}
+```
+
+Subscriptions push matching operations in real-time via SSE.
+
+## Emergent Entities
+
+No schema declaration needed. Entities emerge from operations. The first INS with a new `context.table` creates the table implicitly.
+
+## Snapshot Ingest Details (REC)
+
+```json
+{
+  "op": "REC",
+  "target": { "rows": [...] },
+  "context": { "type": "snapshot_ingest", "table": "users" },
+  "frame": {
+    "match_on": "id",
+    "absence_means": "unchanged",
+    "null_fields_mean": "unchanged"
+  }
+}
+```
+
+`absence_means` options:
+- `"unchanged"` — missing rows are left as-is (default)
+- `"deleted"` — missing rows get a NUL operation
+
+`null_fields_mean` options:
+- `"unchanged"` — null fields are ignored
+- `"cleared"` — null fields get cleared
+
 ## Webhooks (Choreo → Your App)
 
 ```python
