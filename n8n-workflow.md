@@ -1,24 +1,48 @@
-# Habeas - n8n Workflow & Airtable Schema
+# Habeas - n8n Workflow & Airtable Schema (v2)
 
 ## Overview
 
-The Habeas frontend communicates with an n8n webhook backend that manages data in Airtable. This document describes the data model, reference tables, and API contract.
+The Habeas frontend communicates with an n8n webhook backend that manages data in Airtable. This document describes the data model, reference tables, API contract, and authentication flow.
+
+## Architecture: Email Code Login + Role-Based Access
+
+### Auth Flow
+
+1. User enters email → `POST request_code` → n8n generates 6-digit code, stores in Airtable, emails it
+2. User enters code → `POST verify_code` → n8n checks code, returns `{ valid, role, name, token }`
+3. All subsequent requests include `email` in body → n8n filters data based on role
+
+### Role Determination (n8n side)
+
+Admin domains (full access to all matters, pipeline, dashboard, reference data):
+- `rklacylaw.com`
+- `amino-integration.com`
+- `aminoimmigration.com`
+
+Everyone else is a **partner** — they only see matters where they are `ATTORNEY_1_EMAIL` or `ATTORNEY_2_EMAIL`.
 
 ## API Endpoints
 
 All requests are `POST` to `{webhook_url}?action={action}` with JSON body containing `action` and `email`.
 
-### Existing Actions
+### Core Actions
 
 | Action | Description | Extra Params | Returns |
 |--------|-------------|-------------|---------|
-| `list_matters` | List all matters | — | `{ matters: [...] }` |
+| `list_matters` | List matters (filtered by role) | — | `{ matters: [...] }` |
 | `get_matter` | Get single matter | `recordId` | `{ matter, template }` |
 | `save_fields` | Update matter variables | `recordId, fields` | `{ success }` |
 | `create_matter` | Create new matter | intake fields (see below) | `{ recordId }` |
 | `advance_stage` | Move stage forward | `recordId, stage, fromStage` | `{ success }` |
 
-### New Actions (Reference Data)
+### Auth Actions
+
+| Action | Description | Extra Params | Returns |
+|--------|-------------|-------------|---------|
+| `request_code` | Send verification code | `email` | `{ sent: true }` |
+| `verify_code` | Verify code and login | `email, code` | `{ valid, name, token }` |
+
+### Reference Data Actions (admin only)
 
 | Action | Description | Extra Params | Returns |
 |--------|-------------|-------------|---------|
@@ -39,15 +63,17 @@ Primary table tracking habeas corpus petitions through the pipeline.
 | `name` | Text | Case surname |
 | `stage` | Single Select | Pipeline stage (Intake through Resolved) |
 | `circuit` | Single Select | Circuit court (1st-11th, D.C.) |
-| `facility` | Link | Link to Facilities table |
-| `facilityLocation` | Lookup | Auto from Facilities |
-| `attorney` | Link | Link to Attorneys table |
+| `facility` | Link/Text | Detention facility |
+| `facilityLocation` | Text | Facility city/state |
+| `attorney` | Text | Lead attorney name |
+| `attorney_1_email` | Email | Lead attorney email (for partner filtering) |
+| `attorney_2_email` | Email | Co-counsel email (for partner filtering) |
 | `daysInStage` | Number | Computed days in current stage |
 | `filingDate` | Date | Date petition filed |
 | `caseNumber` | Text | Federal case number |
 | `bondGranted` | Single Select | Granted / Denied / (empty) |
 | `daysToFiling` | Number | Days from intake to filing |
-| `variables` | Long Text (JSON) | Template variable overrides |
+| `variables` | Long Text (JSON) | All template variables |
 
 ### Facilities Table (reference)
 
@@ -158,6 +184,93 @@ Tracks government officials (these change over time with administrations).
 | `updatedAt` | DateTime | Last update timestamp |
 
 **Used in template variables:** `ICE_DIRECTOR`, `DHS_SECRETARY`, `AG_NAME`
+
+### Auth Codes Table (new)
+
+Stores temporary verification codes for email-based login.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `email` | Email | User's email (primary key for upsert) |
+| `code` | Text | 6-digit verification code |
+| `createdAt` | DateTime | When code was generated |
+| `expiresAt` | DateTime | Expiration (createdAt + 10 min) |
+
+### Users Table (optional, new)
+
+Stores persistent user info for display names and role overrides.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `email` | Email | User's email |
+| `name` | Text | Display name |
+| `role` | Single Select | "admin" / "partner" (override, or computed from domain) |
+| `lastLogin` | DateTime | Last successful login |
+
+## n8n Auth Implementation
+
+### 1. `request_code` Action
+
+**Trigger:** Webhook `POST ?action=request_code`
+
+**Flow:**
+1. Receive `{ email }`
+2. Generate 6-digit random code
+3. Upsert to Auth Codes table in Airtable:
+   - `email`: the email
+   - `code`: the 6-digit code
+   - `createdAt`: now
+   - `expiresAt`: now + 10 minutes
+4. Send email via SMTP node (or SendGrid/Mailgun):
+   - To: email
+   - Subject: "Your Habeas verification code"
+   - Body: "Your code is: {code}. It expires in 10 minutes."
+5. Return `{ sent: true }`
+
+### 2. `verify_code` Action
+
+**Trigger:** Webhook `POST ?action=verify_code`
+
+**Flow:**
+1. Receive `{ email, code }`
+2. Look up in Auth Codes table where email matches
+3. Check:
+   - Code matches
+   - `expiresAt` > now (not expired)
+4. If valid:
+   - Delete the code record (single-use)
+   - Look up user in Users table (optional — for display name)
+   - Return `{ valid: true, name: "...", token: "..." }`
+5. If invalid:
+   - Return `{ valid: false }`
+
+### 3. Updated `list_matters` Action
+
+**Change:** Filter matters based on who's asking.
+
+**Flow:**
+1. Receive `{ email }`
+2. Determine role from email domain:
+   - If domain is `rklacylaw.com`, `amino-integration.com`, or `aminoimmigration.com` → admin
+   - Otherwise → partner
+3. If admin: Return all matters (no filter)
+4. If partner: Filter matters where:
+   - `variables.ATTORNEY_1_EMAIL` = email, OR
+   - `variables.ATTORNEY_2_EMAIL` = email
+
+**Airtable Formula for Partner Filter:**
+```
+OR(
+  FIND(LOWER({email}), LOWER({variables})),
+  {attorney_1_email} = {email},
+  {attorney_2_email} = {email}
+)
+```
+
+If `variables` is stored as JSON text, the simplest n8n approach is:
+- Fetch all matters
+- In a Function node, filter by checking `JSON.parse(variables).ATTORNEY_1_EMAIL === email` or `ATTORNEY_2_EMAIL === email`
+- Return filtered results
 
 ## Data Flow
 
@@ -287,3 +400,69 @@ Reference data is cached in `localStorage` under the key `habeas_refdata`. The s
 ```
 
 When `list_ref_data` is implemented on the n8n side, the frontend should be updated to fetch from the API instead of relying solely on localStorage + seeding.
+
+Session data is stored in `localStorage` under the key `habeas_session`:
+
+```json
+{
+  "email": "user@lawfirm.com",
+  "name": "User Name",
+  "role": "admin|partner",
+  "token": "...",
+  "ts": 1234567890
+}
+```
+
+Session check on page load — if valid session exists, skip login screen.
+
+## Frontend Features (v2)
+
+### Login Screen
+
+- Shows before any app content
+- Step 1: Enter email → calls `request_code`
+- Step 2: Enter 6-digit code → calls `verify_code`
+- Session persisted in localStorage
+
+### Role-Based Navigation
+
+**Partner lawyers see:**
+- My Cases (home — card grid of their active cases with next-action prompts)
+- New Case (4-step intake wizard)
+
+**Admin users see (in addition):**
+- Pipeline (kanban of ALL cases)
+- All Matters (table view)
+- Dashboard (analytics)
+- Reference Data (CRUD for facilities, wardens, attorneys, etc.)
+- Config button for webhook URL
+
+### Intake Wizard (replaces single-page form)
+
+4 steps with progress indicator:
+
+1. **Client** — Name, country, entry date, years residence, apprehension location/date, criminal history, community ties
+2. **Detention & Court** — Facility (dropdown), warden (filtered by facility), circuit, district court (dropdown w/ auto-fill division/location)
+3. **Respondents & Attorneys** — Field office (w/ auto-fill FOD), ICE Director, DHS Secretary, AG (all from reference data), lead attorney + co-counsel (dropdowns)
+4. **Review** — Summary table of all entered data, create button
+
+### My Cases View
+
+Default landing for partner lawyers. Shows:
+- Case cards with: client name, stage badge, circuit/facility, days-in-stage indicator
+- "Next step" callout on each card (context-sensitive to current stage)
+- Resolved cases collapsed at bottom
+- Empty state with clear CTA to create first case
+
+### Editor Improvements
+
+- "Next step" banner at top of editor showing what action is needed
+- Back button goes to "My Cases" instead of "Pipeline"
+
+## Security Notes
+
+- Codes expire in 10 minutes — single use, deleted after verification
+- Role is determined server-side by email domain — frontend role is a hint, n8n enforces it
+- Partner filtering happens in n8n — partners can't see other attorneys' matters even if they guess a record ID (the `get_matter` endpoint should also check authorization)
+- No passwords stored — email-based verification only
+- Session has no server-side component — for production, consider adding JWT or session tokens validated by n8n
