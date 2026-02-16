@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
+import { createContext, useContext, useReducer, useCallback, useEffect, useRef } from 'react';
 import { SEED_CASES, SEED_PIPELINE_EXTRA, SEED_TEMPLATES } from '../lib/seedData';
 import * as mx from '../lib/matrix';
 
@@ -16,25 +16,21 @@ const SCREENS = {
 const initialState = {
   screen: SCREENS.LOGIN,
   history: [],
-  // Auth
   user: null,
   role: 'partner',
   isLoggedIn: false,
   loginError: null,
   loginLoading: false,
-  // Data
   cases: [],
   templates: [],
   refData: {},
-  // Current selections
   activeCaseId: null,
   activeDocIndex: 0,
   activeTemplateId: null,
   activeTemplateSection: 0,
-  // UI
   loading: false,
+  caseLoading: false,
   toast: null,
-  // Connectivity
   connected: false,
 };
 
@@ -54,37 +50,22 @@ function reducer(state, action) {
     case 'LOGIN_ERROR':
       return { ...state, loginError: action.error, loginLoading: false };
     case 'ENTER_DEMO':
-      return {
-        ...state,
-        isLoggedIn: true,
-        user: { userId: '@demo:local', name: 'Demo User' },
-        role: 'admin',
-        screen: SCREENS.CASES,
-        cases: [...SEED_CASES, ...SEED_PIPELINE_EXTRA],
-        templates: [...SEED_TEMPLATES],
-        connected: false,
-      };
+      return { ...state, isLoggedIn: true, user: { userId: '@demo:local', name: 'Demo User' }, role: 'admin', screen: SCREENS.CASES, cases: [...SEED_CASES, ...SEED_PIPELINE_EXTRA], templates: [...SEED_TEMPLATES], connected: false };
     case 'LOGOUT': {
       mx.clearSession();
       return { ...initialState };
     }
     case 'SET_LOADING':
       return { ...state, loading: action.loading };
-    case 'SET_CONNECTED':
-      return { ...state, connected: action.connected };
+    case 'SET_CASE_LOADING':
+      return { ...state, caseLoading: action.loading };
     case 'SET_CASES':
       return { ...state, cases: action.cases };
-    case 'MERGE_CASES': {
-      // Merge remote cases with local, preferring remote for existing IDs
-      const existing = new Map(state.cases.map(c => [c.id, c]));
-      action.cases.forEach(c => existing.set(c.id, { ...existing.get(c.id), ...c }));
-      return { ...state, cases: Array.from(existing.values()) };
-    }
     case 'SET_TEMPLATES':
       return { ...state, templates: action.templates };
     case 'MERGE_TEMPLATES': {
       const existing = new Map(state.templates.map(t => [t.id, t]));
-      action.templates.forEach(t => existing.set(t.id, { ...existing.get(t.id), ...t }));
+      action.templates.forEach(t => existing.set(t.id, t));
       return { ...state, templates: Array.from(existing.values()) };
     }
     case 'SET_REF_DATA':
@@ -112,12 +93,22 @@ function reducer(state, action) {
       });
       return { ...state, cases };
     }
+    case 'SET_CASE_VARIABLES': {
+      const cases = state.cases.map(c => c.id !== action.caseId ? c : { ...c, variables: action.variables });
+      return { ...state, cases };
+    }
+    case 'SET_CASE_DOCUMENTS': {
+      const cases = state.cases.map(c => c.id !== action.caseId ? c : { ...c, documents: action.documents });
+      return { ...state, cases };
+    }
+    case 'SET_CASE_COMMENTS': {
+      const cases = state.cases.map(c => c.id !== action.caseId ? c : { ...c, comments: action.comments });
+      return { ...state, cases };
+    }
     case 'UPDATE_DOCUMENT_STATUS': {
       const cases = state.cases.map(c => {
         if (c.id !== action.caseId) return c;
-        const documents = c.documents.map(d =>
-          d.id === action.docId ? { ...d, status: action.status } : d
-        );
+        const documents = (c.documents || []).map(d => d.id === action.docId ? { ...d, status: action.status } : d);
         return { ...c, documents };
       });
       return { ...state, cases };
@@ -125,14 +116,14 @@ function reducer(state, action) {
     case 'ADD_DOCUMENT_TO_CASE': {
       const cases = state.cases.map(c => {
         if (c.id !== action.caseId) return c;
-        return { ...c, documents: [...c.documents, action.doc] };
+        return { ...c, documents: [...(c.documents || []), action.doc] };
       });
       return { ...state, cases };
     }
     case 'REMOVE_DOCUMENT_FROM_CASE': {
       const cases = state.cases.map(c => {
         if (c.id !== action.caseId) return c;
-        return { ...c, documents: c.documents.filter(d => d.id !== action.docId) };
+        return { ...c, documents: (c.documents || []).filter(d => d.id !== action.docId) };
       });
       return { ...state, cases };
     }
@@ -143,22 +134,10 @@ function reducer(state, action) {
       });
       return { ...state, cases };
     }
-    case 'UPDATE_COMMENT': {
-      const cases = state.cases.map(c => {
-        if (c.id !== action.caseId) return c;
-        const comments = (c.comments || []).map(cmt =>
-          cmt.id === action.commentId ? { ...cmt, ...action.data } : cmt
-        );
-        return { ...c, comments };
-      });
-      return { ...state, cases };
-    }
     case 'RESOLVE_COMMENT': {
       const cases = state.cases.map(c => {
         if (c.id !== action.caseId) return c;
-        const comments = (c.comments || []).map(cmt =>
-          cmt.id === action.commentId ? { ...cmt, status: 'resolved' } : cmt
-        );
+        const comments = (c.comments || []).map(cmt => cmt.id === action.commentId ? { ...cmt, status: 'resolved' } : cmt);
         return { ...c, comments };
       });
       return { ...state, cases };
@@ -168,17 +147,13 @@ function reducer(state, action) {
       const cases = state.cases.map(c => {
         if (c.id !== action.caseId) return c;
         const idx = stages.indexOf(c.stage);
-        if (idx < stages.length - 1) {
-          return { ...c, stage: stages[idx + 1], daysInStage: 0 };
-        }
+        if (idx < stages.length - 1) return { ...c, stage: stages[idx + 1], daysInStage: 0 };
         return c;
       });
       return { ...state, cases };
     }
     case 'UPDATE_TEMPLATE': {
-      const templates = state.templates.map(t =>
-        t.id === action.templateId ? { ...t, ...action.data } : t
-      );
+      const templates = state.templates.map(t => t.id === action.templateId ? { ...t, ...action.data } : t);
       return { ...state, templates };
     }
     case 'ADD_TEMPLATE':
@@ -188,13 +163,7 @@ function reducer(state, action) {
     case 'FORK_TEMPLATE': {
       const original = state.templates.find(t => t.id === action.originalId);
       if (!original) return state;
-      const forked = {
-        ...JSON.parse(JSON.stringify(original)),
-        id: action.newId,
-        name: `${original.name} (Fork)`,
-        docs: 0,
-        lastUsed: Date.now(),
-      };
+      const forked = { ...JSON.parse(JSON.stringify(original)), id: action.newId, name: `${original.name} (Fork)`, docs: 0, lastUsed: Date.now() };
       return { ...state, templates: [...state.templates, forked] };
     }
     case 'ADD_TEMPLATE_SECTION': {
@@ -207,9 +176,7 @@ function reducer(state, action) {
     case 'UPDATE_TEMPLATE_SECTION': {
       const templates = state.templates.map(t => {
         if (t.id !== action.templateId) return t;
-        const sections = t.sections.map((s, i) =>
-          i === action.sectionIndex ? { ...s, ...action.data } : s
-        );
+        const sections = t.sections.map((s, i) => i === action.sectionIndex ? { ...s, ...action.data } : s);
         return { ...t, sections };
       });
       return { ...state, templates };
@@ -243,41 +210,61 @@ function reducer(state, action) {
 export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
-  // Try to restore session on mount
+  // Refs so persistence callbacks always see current values without re-creating
+  const connectedRef = useRef(false);
+  connectedRef.current = state.connected;
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  // ── Session restore ──
   useEffect(() => {
     const session = mx.loadSession();
     if (session?.token && session?.userId) {
       mx.setToken(session.token);
       mx.setUserId(session.userId);
-      // Validate the session
       mx.whoami()
         .then(async () => {
           const role = await mx.determineRole();
-          dispatch({
-            type: 'LOGIN_SUCCESS',
-            user: { userId: session.userId, name: session.name || session.userId },
-            role,
-          });
-          // Load data from Matrix
+          dispatch({ type: 'LOGIN_SUCCESS', user: { userId: session.userId, name: session.name || session.userId }, role });
           loadRemoteData(dispatch);
         })
-        .catch(() => {
-          mx.clearSession();
-        });
+        .catch(() => { mx.clearSession(); });
     }
   }, []);
 
-  const navigate = useCallback((screen) => {
-    dispatch({ type: 'NAVIGATE', screen });
+  // ── Navigation ──
+  const navigate = useCallback((screen) => dispatch({ type: 'NAVIGATE', screen }), []);
+  const goBack = useCallback(() => dispatch({ type: 'GO_BACK' }), []);
+
+  const showToast = useCallback((message, isError = false) => {
+    dispatch({ type: 'SHOW_TOAST', message, isError });
+    setTimeout(() => dispatch({ type: 'HIDE_TOAST' }), 3000);
   }, []);
 
-  const goBack = useCallback(() => {
-    dispatch({ type: 'GO_BACK' });
-  }, []);
-
-  const openCase = useCallback((caseId) => {
+  // ── Open case: navigate AND load per-case data from Matrix ──
+  const openCase = useCallback(async (caseId) => {
     dispatch({ type: 'SET_ACTIVE_CASE', caseId });
     dispatch({ type: 'NAVIGATE', screen: SCREENS.WORKSPACE });
+
+    if (!connectedRef.current) return;
+
+    dispatch({ type: 'SET_CASE_LOADING', loading: true });
+    try {
+      const { variables, documents, comments } = await mx.loadCaseData(caseId);
+      if (Object.keys(variables).length > 0) {
+        dispatch({ type: 'SET_CASE_VARIABLES', caseId, variables });
+      }
+      if (documents.length > 0) {
+        dispatch({ type: 'SET_CASE_DOCUMENTS', caseId, documents });
+      }
+      if (comments.length > 0) {
+        dispatch({ type: 'SET_CASE_COMMENTS', caseId, comments });
+      }
+    } catch (e) {
+      console.warn('Failed to load case room data (room may not exist yet):', e);
+    } finally {
+      dispatch({ type: 'SET_CASE_LOADING', loading: false });
+    }
   }, []);
 
   const openTemplate = useCallback((templateId) => {
@@ -285,102 +272,29 @@ export function AppProvider({ children }) {
     dispatch({ type: 'NAVIGATE', screen: SCREENS.TEMPLATE_EDIT });
   }, []);
 
-  const showToast = useCallback((message, isError = false) => {
-    dispatch({ type: 'SHOW_TOAST', message, isError });
-    setTimeout(() => dispatch({ type: 'HIDE_TOAST' }), 3000);
-  }, []);
-
-  // ── Matrix persistence helpers ──
-
+  // ── Auth ──
   const doLogin = useCallback(async (username, password) => {
     dispatch({ type: 'SET_LOGIN_LOADING', loading: true });
     try {
       const { userId, token } = await mx.login(username, password);
       const role = await mx.determineRole();
-      const name = username;
-      mx.saveSession({ userId, token, name, ts: Date.now() });
-      dispatch({ type: 'LOGIN_SUCCESS', user: { userId, name }, role });
+      mx.saveSession({ userId, token, name: username, ts: Date.now() });
+      dispatch({ type: 'LOGIN_SUCCESS', user: { userId, name: username }, role });
       loadRemoteData(dispatch);
     } catch (e) {
       dispatch({ type: 'LOGIN_ERROR', error: e.message });
     }
   }, []);
 
-  const enterDemo = useCallback(() => {
-    dispatch({ type: 'ENTER_DEMO' });
-  }, []);
+  const enterDemo = useCallback(() => dispatch({ type: 'ENTER_DEMO' }), []);
 
-  const persistCaseMetadata = useCallback(async (caseId, caseObj) => {
-    if (!state.connected) return;
-    try {
-      const metadata = {
-        petitionerName: caseObj.petitionerName,
-        stage: caseObj.stage,
-        circuit: caseObj.circuit,
-        facility: caseObj.facility,
-        facilityLocation: caseObj.facilityLocation,
-        daysInStage: caseObj.daysInStage,
-        owner: caseObj.owner || mx.getUserId(),
-        docReadiness: getDocReadiness(caseObj.documents),
-      };
-      await mx.saveCaseMetadata(caseId, metadata);
-    } catch (e) {
-      console.warn('Failed to persist case metadata:', e);
-    }
-  }, [state.connected]);
-
-  const persistCaseData = useCallback(async (caseId, variables) => {
-    if (!state.connected) return;
-    try {
-      await mx.saveCaseVariables(caseId, variables);
-    } catch (e) {
-      console.warn('Failed to persist case variables:', e);
-    }
-  }, [state.connected]);
-
-  const persistDocument = useCallback(async (caseId, docId, docData) => {
-    if (!state.connected) return;
-    try {
-      await mx.saveCaseDocument(caseId, docId, docData);
-    } catch (e) {
-      console.warn('Failed to persist document:', e);
-    }
-  }, [state.connected]);
-
-  const persistComment = useCallback(async (caseId, commentId, commentData) => {
-    if (!state.connected) return;
-    try {
-      await mx.saveCaseComment(caseId, commentId, commentData);
-    } catch (e) {
-      console.warn('Failed to persist comment:', e);
-    }
-  }, [state.connected]);
-
-  const persistTemplate = useCallback(async (templateId, templateData) => {
-    if (!state.connected) return;
-    try {
-      await mx.saveTemplate(templateId, templateData);
-      showToast('Template saved');
-    } catch (e) {
-      showToast('Failed to save template', true);
-    }
-  }, [state.connected, showToast]);
-
-  const persistDeleteTemplate = useCallback(async (templateId) => {
-    if (!state.connected) return;
-    try {
-      await mx.deleteTemplate(templateId);
-    } catch (e) {
-      console.warn('Failed to delete template:', e);
-    }
-  }, [state.connected]);
+  // ── Case operations (dispatch + auto-persist to Matrix) ──
 
   const createCase = useCallback(async (caseData) => {
     const id = `case_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const newCase = {
-      id,
-      ...caseData,
-      owner: mx.getUserId() || state.user?.userId,
+      id, ...caseData,
+      owner: mx.getUserId() || stateRef.current.user?.userId,
       lastUpdated: new Date().toISOString(),
       documents: caseData.documents || [],
       comments: [],
@@ -389,17 +303,13 @@ export function AppProvider({ children }) {
     };
     dispatch({ type: 'ADD_CASE', caseData: newCase });
 
-    if (state.connected) {
+    if (connectedRef.current) {
       try {
         await mx.saveCaseMetadata(id, {
-          petitionerName: newCase.petitionerName,
-          stage: newCase.stage,
-          circuit: newCase.circuit,
-          facility: newCase.facility,
-          facilityLocation: newCase.facilityLocation,
-          daysInStage: 0,
-          owner: newCase.owner,
-          docReadiness: getDocReadiness(newCase.documents),
+          petitionerName: newCase.petitionerName, stage: newCase.stage,
+          circuit: newCase.circuit, facility: newCase.facility,
+          facilityLocation: newCase.facilityLocation, daysInStage: 0,
+          owner: newCase.owner, docReadiness: getDocReadiness(newCase.documents),
         });
         if (Object.keys(newCase.variables).length > 0) {
           await mx.saveCaseVariables(id, newCase.variables);
@@ -412,38 +322,139 @@ export function AppProvider({ children }) {
       }
     }
     return id;
-  }, [state.connected, state.user, showToast]);
+  }, [showToast]);
+
+  const advanceStage = useCallback(async (caseId) => {
+    const c = stateRef.current.cases.find(x => x.id === caseId);
+    if (!c) return;
+    const idx = mx.STAGES.indexOf(c.stage);
+    if (idx >= mx.STAGES.length - 1) return;
+    const newStage = mx.STAGES[idx + 1];
+    dispatch({ type: 'ADVANCE_STAGE', caseId });
+    if (connectedRef.current) {
+      try { await mx.saveCaseMetadata(caseId, { ...c, stage: newStage, daysInStage: 0 }); } catch (e) { console.warn(e); }
+    }
+    return newStage;
+  }, []);
+
+  const updateCaseVariable = useCallback(async (caseId, key, value) => {
+    dispatch({ type: 'UPDATE_CASE_VARIABLE', caseId, key, value });
+    if (connectedRef.current) {
+      const c = stateRef.current.cases.find(x => x.id === caseId);
+      const updated = { ...(c?.variables || {}), [key]: value };
+      try { await mx.saveCaseVariables(caseId, updated); } catch (e) { console.warn(e); }
+    }
+  }, []);
+
+  const updateDocStatus = useCallback(async (caseId, docId, status) => {
+    dispatch({ type: 'UPDATE_DOCUMENT_STATUS', caseId, docId, status });
+    if (connectedRef.current) {
+      const c = stateRef.current.cases.find(x => x.id === caseId);
+      const doc = (c?.documents || []).find(d => d.id === docId);
+      if (doc) {
+        try {
+          await mx.saveCaseDocument(caseId, docId, { ...doc, status });
+          const updatedDocs = (c.documents || []).map(d => d.id === docId ? { ...d, status } : d);
+          await mx.saveCaseMetadata(caseId, { ...c, docReadiness: getDocReadiness(updatedDocs) });
+        } catch (e) { console.warn(e); }
+      }
+    }
+  }, []);
+
+  const addDocToCase = useCallback(async (caseId, template) => {
+    const docId = `doc_${Date.now()}`;
+    const doc = { id: docId, templateId: template.id, name: template.name, status: 'draft', sections: [] };
+    dispatch({ type: 'ADD_DOCUMENT_TO_CASE', caseId, doc });
+    if (connectedRef.current) {
+      try {
+        await mx.saveCaseDocument(caseId, docId, doc);
+        const c = stateRef.current.cases.find(x => x.id === caseId);
+        if (c) await mx.saveCaseMetadata(caseId, { ...c, docReadiness: getDocReadiness([...(c.documents || []), doc]) });
+      } catch (e) { console.warn(e); }
+    }
+    return docId;
+  }, []);
+
+  const addComment = useCallback(async (caseId, comment) => {
+    dispatch({ type: 'ADD_COMMENT', caseId, comment });
+    if (connectedRef.current) {
+      try { await mx.saveCaseComment(caseId, comment.id, comment); } catch (e) { console.warn(e); }
+    }
+  }, []);
+
+  const resolveComment = useCallback(async (caseId, commentId) => {
+    dispatch({ type: 'RESOLVE_COMMENT', caseId, commentId });
+    if (connectedRef.current) {
+      try { await mx.saveCaseComment(caseId, commentId, { status: 'resolved' }); } catch (e) { console.warn(e); }
+    }
+  }, []);
+
+  const moveCaseToStage = useCallback(async (caseId, newStage) => {
+    dispatch({ type: 'UPDATE_CASE', caseId, data: { stage: newStage, daysInStage: 0 } });
+    if (connectedRef.current) {
+      const c = stateRef.current.cases.find(x => x.id === caseId);
+      if (c) {
+        try { await mx.saveCaseMetadata(caseId, { ...c, stage: newStage, daysInStage: 0 }); } catch (e) { console.warn(e); }
+      }
+    }
+  }, []);
+
+  // ── Template operations ──
+
+  const createTemplate = useCallback(async (templateData) => {
+    const id = `tpl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const template = { id, ...templateData, docs: 0, lastUsed: Date.now() };
+    dispatch({ type: 'ADD_TEMPLATE', template });
+    if (connectedRef.current) {
+      try { await mx.saveTemplate(id, template); } catch (e) { console.warn(e); }
+    }
+    return id;
+  }, []);
+
+  const saveTemplateNow = useCallback(async (templateId) => {
+    if (!connectedRef.current) { showToast('Template saved (local only)'); return; }
+    const tpl = stateRef.current.templates.find(t => t.id === templateId);
+    if (!tpl) return;
+    try {
+      await mx.saveTemplate(templateId, tpl);
+      showToast('Template saved to server');
+    } catch (e) {
+      showToast('Failed to save template: ' + e.message, true);
+    }
+  }, [showToast]);
+
+  const forkTemplate = useCallback(async (originalId) => {
+    const newId = `tpl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    dispatch({ type: 'FORK_TEMPLATE', originalId, newId });
+    if (connectedRef.current) {
+      setTimeout(async () => {
+        const forked = stateRef.current.templates.find(t => t.id === newId);
+        if (forked) { try { await mx.saveTemplate(newId, forked); } catch (e) { console.warn(e); } }
+      }, 50);
+    }
+    return newId;
+  }, []);
+
+  const deleteTemplate = useCallback(async (templateId) => {
+    dispatch({ type: 'DELETE_TEMPLATE', templateId });
+    if (connectedRef.current) {
+      try { await mx.deleteTemplate(templateId); } catch (e) { console.warn(e); }
+    }
+  }, []);
 
   const inviteAttorneyToCase = useCallback(async (caseId, userId) => {
-    if (!state.connected) {
-      showToast('Not connected — cannot invite', true);
-      return;
-    }
-    try {
-      await mx.inviteToCase(caseId, userId);
-      showToast('Attorney invited');
-    } catch (e) {
-      showToast('Failed to invite: ' + e.message, true);
-    }
-  }, [state.connected, showToast]);
+    if (!connectedRef.current) { showToast('Not connected', true); return; }
+    try { await mx.inviteToCase(caseId, userId); showToast('Attorney invited'); }
+    catch (e) { showToast('Failed to invite: ' + e.message, true); }
+  }, [showToast]);
 
   const value = {
-    state,
-    dispatch,
-    navigate,
-    goBack,
-    openCase,
-    openTemplate,
-    showToast,
-    doLogin,
-    enterDemo,
-    persistCaseMetadata,
-    persistCaseData,
-    persistDocument,
-    persistComment,
-    persistTemplate,
-    persistDeleteTemplate,
-    createCase,
+    state, dispatch, navigate, goBack, showToast,
+    openCase, openTemplate,
+    doLogin, enterDemo,
+    createCase, advanceStage, updateCaseVariable, updateDocStatus,
+    addDocToCase, addComment, resolveComment, moveCaseToStage,
+    createTemplate, saveTemplateNow, forkTemplate, deleteTemplate,
     inviteAttorneyToCase,
     SCREENS,
   };
@@ -451,22 +462,19 @@ export function AppProvider({ children }) {
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 
-// Load remote data from Matrix into state
 async function loadRemoteData(dispatch) {
   try {
     dispatch({ type: 'SET_LOADING', loading: true });
-
     const [templates, caseMetadata, refData] = await Promise.allSettled([
-      mx.loadTemplates(),
-      mx.loadCaseMetadata(),
-      mx.loadRefData(),
+      mx.loadTemplates(), mx.loadCaseMetadata(), mx.loadRefData(),
     ]);
-
     if (templates.status === 'fulfilled' && templates.value.length > 0) {
-      dispatch({ type: 'MERGE_TEMPLATES', templates: templates.value });
+      dispatch({ type: 'SET_TEMPLATES', templates: templates.value });
     }
     if (caseMetadata.status === 'fulfilled' && caseMetadata.value.length > 0) {
-      dispatch({ type: 'MERGE_CASES', cases: caseMetadata.value });
+      dispatch({ type: 'SET_CASES', cases: caseMetadata.value.map(m => ({
+        ...m, documents: m.documents || [], comments: m.comments || [], variables: m.variables || {},
+      })) });
     }
     if (refData.status === 'fulfilled') {
       dispatch({ type: 'SET_REF_DATA', refData: refData.value });
@@ -480,8 +488,7 @@ async function loadRemoteData(dispatch) {
 
 function getDocReadiness(documents) {
   if (!documents || documents.length === 0) return { ready: 0, total: 0 };
-  const ready = documents.filter(d => d.status === 'ready').length;
-  return { ready, total: documents.length };
+  return { ready: documents.filter(d => d.status === 'ready').length, total: documents.length };
 }
 
 export function useApp() {

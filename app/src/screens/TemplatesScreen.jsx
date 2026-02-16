@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useApp, SCREENS } from '../context/AppContext';
-import { SEED_TEMPLATES } from '../lib/seedData';
 
 const CATEGORIES = [
   { id: 'all', label: 'All' },
@@ -11,7 +10,7 @@ const CATEGORIES = [
 ];
 
 export default function TemplatesScreen() {
-  const { state, dispatch, navigate, openTemplate, showToast, persistTemplate, persistDeleteTemplate, openCase } = useApp();
+  const { state, navigate, openTemplate, openCase, showToast, createTemplate, forkTemplate, deleteTemplate, addDocToCase } = useApp();
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [showNewTemplate, setShowNewTemplate] = useState(false);
   const [newTplName, setNewTplName] = useState('');
@@ -26,24 +25,18 @@ export default function TemplatesScreen() {
   });
   const filtered = selectedCategory === 'all' ? templates : templates.filter(t => t.category === selectedCategory);
 
-  function handleCreateTemplate(e) {
+  async function handleCreateTemplate(e) {
     e.preventDefault();
     if (!newTplName.trim()) return;
-    const id = `tpl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    const template = {
-      id,
+    const id = await createTemplate({
       name: newTplName.trim(),
       category: newTplCategory,
       desc: newTplDesc.trim(),
-      docs: 0,
-      lastUsed: Date.now(),
       sections: [
         { id: `s_${Date.now()}`, name: 'Introduction', required: true, paraCount: 1, content: '' },
       ],
       variables: [],
-    };
-    dispatch({ type: 'ADD_TEMPLATE', template });
-    persistTemplate(id, template);
+    });
     setShowNewTemplate(false);
     setNewTplName('');
     setNewTplDesc('');
@@ -51,19 +44,14 @@ export default function TemplatesScreen() {
     openTemplate(id);
   }
 
-  function handleForkTemplate(tpl) {
-    const newId = `tpl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    dispatch({ type: 'FORK_TEMPLATE', originalId: tpl.id, newId });
-    // Persist the forked template
-    const forked = { ...JSON.parse(JSON.stringify(tpl)), id: newId, name: `${tpl.name} (Fork)`, docs: 0, lastUsed: Date.now() };
-    persistTemplate(newId, forked);
+  async function handleForkTemplate(tpl) {
+    const newId = await forkTemplate(tpl.id);
     showToast(`Forked: ${tpl.name}`);
   }
 
-  function handleDeleteTemplate(tplId) {
+  async function handleDeleteTemplate(tplId) {
     if (!confirm('Delete this template? This cannot be undone.')) return;
-    dispatch({ type: 'DELETE_TEMPLATE', templateId: tplId });
-    persistDeleteTemplate(tplId);
+    await deleteTemplate(tplId);
     showToast('Template deleted');
   }
 
@@ -71,19 +59,9 @@ export default function TemplatesScreen() {
     setUseCaseTarget(template);
   }
 
-  function handleSelectCaseForTemplate(caseId) {
+  async function handleSelectCaseForTemplate(caseId) {
     if (!useCaseTarget) return;
-    const docId = `doc_${Date.now()}`;
-    const doc = {
-      id: docId,
-      templateId: useCaseTarget.id,
-      name: useCaseTarget.name,
-      status: 'draft',
-      sections: [],
-    };
-    dispatch({ type: 'ADD_DOCUMENT_TO_CASE', caseId, doc });
-    // Update template usage count
-    dispatch({ type: 'UPDATE_TEMPLATE', templateId: useCaseTarget.id, data: { docs: (useCaseTarget.docs || 0) + 1, lastUsed: Date.now() } });
+    await addDocToCase(caseId, useCaseTarget);
     setUseCaseTarget(null);
     showToast(`Added ${useCaseTarget.name} to case`);
     openCase(caseId);
@@ -232,6 +210,12 @@ export default function TemplatesScreen() {
                   className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:border-gray-400"
                 >
                   Fork
+                </button>
+                <button
+                  onClick={() => handleDeleteTemplate(t.id)}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:border-gray-400"
+                >
+                  Delete
                 </button>
                 <button
                   onClick={() => handleUseInCase(t)}

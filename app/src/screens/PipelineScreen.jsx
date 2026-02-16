@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { useApp, SCREENS } from '../context/AppContext';
+import { useApp } from '../context/AppContext';
 import Chip from '../components/Chip';
 import { STAGES, STAGE_COLORS } from '../lib/matrix';
 
 export default function PipelineScreen() {
-  const { state, openCase, dispatch, persistCaseMetadata, showToast } = useApp();
+  const { state, openCase, moveCaseToStage, showToast } = useApp();
   const [attFilter, setAttFilter] = useState('all');
   const [dragItem, setDragItem] = useState(null);
 
@@ -33,7 +33,6 @@ export default function PipelineScreen() {
   function getDocReadiness(c) {
     const docs = c.documents || [];
     if (docs.length === 0) {
-      // Use docReadiness from metadata if available
       return c.docReadiness || { ready: 0, total: 0 };
     }
     const ready = docs.filter(d => d.status === 'ready').length;
@@ -56,13 +55,12 @@ export default function PipelineScreen() {
     e.dataTransfer.dropEffect = 'move';
   }
 
-  function handleDrop(e, targetStage) {
+  async function handleDrop(e, targetStage) {
     e.preventDefault();
     if (!dragItem) return;
     if (dragItem.stage === targetStage) return;
 
-    dispatch({ type: 'UPDATE_CASE', caseId: dragItem.id, data: { stage: targetStage, daysInStage: 0 } });
-    persistCaseMetadata(dragItem.id, { ...dragItem, stage: targetStage, daysInStage: 0 });
+    await moveCaseToStage(dragItem.id, targetStage);
     showToast(`${dragItem.petitionerName} moved to ${targetStage}`);
     setDragItem(null);
   }

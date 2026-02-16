@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { useApp, SCREENS } from '../context/AppContext';
 
 export default function TemplateEditScreen() {
-  const { state, dispatch, navigate, showToast, persistTemplate } = useApp();
+  const { state, dispatch, navigate, showToast, saveTemplateNow } = useApp();
 
   const template = state.templates.find(t => t.id === state.activeTemplateId);
   if (!template) {
@@ -28,8 +28,7 @@ export default function TemplateEditScreen() {
   });
 
   function handleSave() {
-    persistTemplate(template.id, template);
-    showToast('Template saved');
+    saveTemplateNow(template.id);
   }
 
   function handleSectionSelect(idx) {
