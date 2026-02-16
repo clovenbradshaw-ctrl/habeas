@@ -1,468 +1,721 @@
-# Habeas - n8n Workflow & Airtable Schema (v2)
+# Habeas — n8n Workflow Documentation (v3)
 
 ## Overview
 
-The Habeas frontend communicates with an n8n webhook backend that manages data in Airtable. This document describes the data model, reference tables, API contract, and authentication flow.
+The Habeas frontend communicates with a single n8n webhook that routes all actions through an **operation-sourcing** architecture. Instead of separate Airtable tables for each entity type, all state changes are recorded as immutable operation rows in a single **Habeas Operations** table. Entity state is reconstructed ("materialized") by replaying operations in chronological order.
 
-## Architecture: Email Code Login + Role-Based Access
+## Architecture
 
-### Auth Flow
+### Single Webhook Entry Point
 
-1. User enters email → `POST request_code` → n8n generates 6-digit code, stores in Airtable, emails it
-2. User enters code → `POST verify_code` → n8n checks code, returns `{ valid, role, name, token }`
-3. All subsequent requests include `email` in body → n8n filters data based on role
+All requests are `POST` to the n8n webhook path `/habeas` with `responseMode: responseNode`. The webhook accepts JSON bodies and supports CORS (`Access-Control-Allow-Origin: *`).
 
-### Role Determination (n8n side)
+### Request Flow
 
-Admin domains (full access to all matters, pipeline, dashboard, reference data):
-- `rklacylaw.com`
-- `amino-integration.com`
-- `aminoimmigration.com`
+```
+Webhook (POST /habeas)
+  → Parse Request (extract action, email, recordId, entityId)
+    → Route (switch on action)
+      → [action-specific pipeline]
+        → Respond to Webhook (JSON with CORS headers)
+```
 
-Everyone else is a **partner** — they only see matters where they are `ATTORNEY_1_EMAIL` or `ATTORNEY_2_EMAIL`.
+### Operation-Sourcing Model
 
-## API Endpoints
+Every write operation creates one or more rows in the Habeas Operations table. Reads reconstruct state by replaying those rows. This gives full provenance, version history, and auditability for every field change.
 
-All requests are `POST` to `{webhook_url}?action={action}` with JSON body containing `action` and `email`.
+**Operator codes:**
 
-### Core Actions
+| Operator | Meaning | Target Structure |
+|----------|---------|-----------------|
+| `INS` | Insert — create a new entity | `{ id, name, ...fields }` |
+| `ALT` | Alter — change a single field | `{ id, field, from?, to }` |
+| `DES` | Describe — set a descriptive field | `{ field, value }` |
+| `CON` | Connect — create a relationship | `{ from: {type, id}, to: {type, id}, relation }` |
+| `REC` | Record — log a recognition or event | `{ recognition?, bond_amount?, ...data }` |
+| `SUP` | Supply — attach supporting values | `{ field, values }` |
+| `NUL` | Nullify — soft-delete an entity | `{ reason }` |
 
-| Action | Description | Extra Params | Returns |
-|--------|-------------|-------------|---------|
-| `list_matters` | List matters (filtered by role) | — | `{ matters: [...] }` |
-| `get_matter` | Get single matter | `recordId` | `{ matter, template }` |
-| `save_fields` | Update matter variables | `recordId, fields` | `{ success }` |
-| `create_matter` | Create new matter | intake fields (see below) | `{ recordId }` |
-| `advance_stage` | Move stage forward | `recordId, stage, fromStage` | `{ success }` |
-
-### Auth Actions
-
-| Action | Description | Extra Params | Returns |
-|--------|-------------|-------------|---------|
-| `request_code` | Send verification code | `email` | `{ sent: true }` |
-| `verify_code` | Verify code and login | `email, code` | `{ valid, name, token }` |
-
-### Reference Data Actions (admin only)
-
-| Action | Description | Extra Params | Returns |
-|--------|-------------|-------------|---------|
-| `list_ref_data` | Get all reference tables | — | `{ wardens, facilities, attorneys, fieldOffices, courts, officials }` |
-| `save_ref_record` | Create/update a ref record | `table, record` | `{ id }` |
-| `delete_ref_record` | Delete a ref record | `table, id` | `{ success }` |
+**Entity types:** `matter`, `facility`, `warden`, `relationship`, `template`
 
 ## Airtable Schema
 
-### Matters Table (existing)
+### Single Table: Habeas Operations
 
-Primary table tracking habeas corpus petitions through the pipeline.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | Auto | Airtable record ID |
-| `petitionerName` | Text | Client full name |
-| `name` | Text | Case surname |
-| `stage` | Single Select | Pipeline stage (Intake through Resolved) |
-| `circuit` | Single Select | Circuit court (1st-11th, D.C.) |
-| `facility` | Link/Text | Detention facility |
-| `facilityLocation` | Text | Facility city/state |
-| `attorney` | Text | Lead attorney name |
-| `attorney_1_email` | Email | Lead attorney email (for partner filtering) |
-| `attorney_2_email` | Email | Co-counsel email (for partner filtering) |
-| `daysInStage` | Number | Computed days in current stage |
-| `filingDate` | Date | Date petition filed |
-| `caseNumber` | Text | Federal case number |
-| `bondGranted` | Single Select | Granted / Denied / (empty) |
-| `daysToFiling` | Number | Days from intake to filing |
-| `variables` | Long Text (JSON) | All template variables |
-
-### Facilities Table (reference)
-
-Tracks detention facilities with provenance.
+**Base:** Habeas (`appI0mBBQRoQTMZOc`)
+**Table:** Habeas Operations (`tblcalDWX2zHThdR0`)
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | Auto | Record ID |
-| `name` | Text | Facility name (e.g., "Farmville Detention Center") |
-| `location` | Text | City, State (e.g., "Farmville, Virginia") |
-| `createdBy` | Email | User who created the record |
-| `createdAt` | DateTime | Creation timestamp |
-| `updatedBy` | Email | User who last updated |
-| `updatedAt` | DateTime | Last update timestamp |
+| `RecordId` | Auto (readonly) | Airtable record ID |
+| `operator` | Single Select | Operation code: `INS`, `ALT`, `DES`, `CON`, `REC`, `SUP`, `NUL` |
+| `Target` | Text (JSON) | Serialized payload — structure depends on operator (see table above) |
+| `context` | Text (JSON) | `{ type, source }` — entity type and where the op originated |
+| `frame` | Text (JSON) | Metadata: circuit, owner, demo flag, template version, etc. |
+| `agent` | Text | Email of the user who performed the action |
+| `entity_id` | Text | Deterministic ID of the entity this op belongs to |
+| `entity_type` | Text | `matter`, `facility`, `warden`, `relationship`, `template` |
+| `Content` | Text | Free-text content (used for template ops) |
+| `Attachments` | Attachment | File attachments |
+| `Attachment Summary` | Text | Summary of attached files |
+| `Status` | Text | Status flag (used to mark active templates) |
+| `Created` | DateTime (readonly) | Airtable auto-timestamp |
 
-**Used in template variables:** `DETENTION_FACILITY`, `FACILITY_LOCATION`
+### Entity ID Conventions
 
-### Wardens Table (reference)
+| Entity Type | ID Pattern | Example |
+|-------------|-----------|---------|
+| Matter | `mat_{slug}_{timestamp}` | `mat_john_doe_1708100000000` |
+| Facility | `fac_{slug}` | `fac_farmville_detention_center` |
+| Warden | `war_{slug}` | `war_jane_smith` |
+| Relationship | `{entity1_id}::{entity2_id}` | `mat_john_doe_123::fac_farmville` |
 
-Tracks facility wardens with provenance and facility linkage.
+Slugs are derived from names: lowercased, non-alphanumeric characters replaced with `_`, truncated to 30–40 chars. Facility and warden IDs are deterministic (idempotent on repeated creation).
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | Auto | Record ID |
-| `name` | Text | Warden's full name |
-| `facility` | Link | Link to Facilities table |
-| `createdBy` | Email | User who created the record |
-| `createdAt` | DateTime | Creation timestamp |
-| `updatedBy` | Email | User who last updated |
-| `updatedAt` | DateTime | Last update timestamp |
+## API Actions
 
-**Used in template variable:** `WARDEN_NAME`
+### Request Format
 
-**Linked data:** Selecting a warden auto-fills the facility and location. Selecting a facility filters the wardens dropdown to only wardens at that facility.
+All requests are `POST` with JSON body:
 
-### Attorneys Table (reference)
-
-Tracks attorneys with full contact details and provenance.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | Auto | Record ID |
-| `name` | Text | Attorney full name |
-| `bar` | Text | Bar number (e.g., "VA Bar No. 89590") |
-| `firm` | Text | Law firm name |
-| `addr` | Text | Mailing address |
-| `phone` | Text | Phone number |
-| `email` | Email | Email address |
-| `createdBy` | Email | User who created the record |
-| `createdAt` | DateTime | Creation timestamp |
-| `updatedBy` | Email | User who last updated |
-| `updatedAt` | DateTime | Last update timestamp |
-
-**Used in template variables:** `ATTORNEY_1_NAME`, `ATTORNEY_1_BAR`, `ATTORNEY_1_FIRM`, `ATTORNEY_1_ADDR`, `ATTORNEY_1_PHONE`, `ATTORNEY_1_EMAIL` (and same for `ATTORNEY_2_*`)
-
-**Linked data:** Selecting an attorney name auto-fills bar, firm, address, phone, and email.
-
-### Field Offices Table (reference)
-
-Tracks ICE field offices and their directors.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | Auto | Record ID |
-| `name` | Text | Office name (e.g., "Washington Field Office") |
-| `director` | Text | Field Office Director name |
-| `createdBy` | Email | User who created the record |
-| `createdAt` | DateTime | Creation timestamp |
-| `updatedBy` | Email | User who last updated |
-| `updatedAt` | DateTime | Last update timestamp |
-
-**Used in template variables:** `FIELD_OFFICE`, `FOD_NAME`
-
-**Linked data:** Selecting a field office auto-fills the FOD name.
-
-### Courts Table (reference)
-
-Tracks federal district courts with division and location.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | Auto | Record ID |
-| `district` | Text | Full district name (e.g., "Eastern District of Virginia") |
-| `division` | Text | Division name (e.g., "Alexandria Division") |
-| `location` | Text | City, State (e.g., "Alexandria, Virginia") |
-| `createdBy` | Email | User who created the record |
-| `createdAt` | DateTime | Creation timestamp |
-| `updatedBy` | Email | User who last updated |
-| `updatedAt` | DateTime | Last update timestamp |
-
-**Used in template variables:** `DISTRICT_FULL`, `DIVISION`, `COURT_LOCATION`
-
-**Linked data:** Selecting a district auto-fills division and court location.
-
-### Officials Table (reference)
-
-Tracks government officials (these change over time with administrations).
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | Auto | Record ID |
-| `title` | Single Select | "ICE Director" / "DHS Secretary" / "Attorney General" |
-| `name` | Text | Official's full name |
-| `effectiveDate` | Text | When they took office (e.g., "January 2025") |
-| `createdBy` | Email | User who created the record |
-| `createdAt` | DateTime | Creation timestamp |
-| `updatedBy` | Email | User who last updated |
-| `updatedAt` | DateTime | Last update timestamp |
-
-**Used in template variables:** `ICE_DIRECTOR`, `DHS_SECRETARY`, `AG_NAME`
-
-### Auth Codes Table (new)
-
-Stores temporary verification codes for email-based login.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `email` | Email | User's email (primary key for upsert) |
-| `code` | Text | 6-digit verification code |
-| `createdAt` | DateTime | When code was generated |
-| `expiresAt` | DateTime | Expiration (createdAt + 10 min) |
-
-### Users Table (optional, new)
-
-Stores persistent user info for display names and role overrides.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `email` | Email | User's email |
-| `name` | Text | Display name |
-| `role` | Single Select | "admin" / "partner" (override, or computed from domain) |
-| `lastLogin` | DateTime | Last successful login |
-
-## n8n Auth Implementation
-
-### 1. `request_code` Action
-
-**Trigger:** Webhook `POST ?action=request_code`
-
-**Flow:**
-1. Receive `{ email }`
-2. Generate 6-digit random code
-3. Upsert to Auth Codes table in Airtable:
-   - `email`: the email
-   - `code`: the 6-digit code
-   - `createdAt`: now
-   - `expiresAt`: now + 10 minutes
-4. Send email via SMTP node (or SendGrid/Mailgun):
-   - To: email
-   - Subject: "Your Habeas verification code"
-   - Body: "Your code is: {code}. It expires in 10 minutes."
-5. Return `{ sent: true }`
-
-### 2. `verify_code` Action
-
-**Trigger:** Webhook `POST ?action=verify_code`
-
-**Flow:**
-1. Receive `{ email, code }`
-2. Look up in Auth Codes table where email matches
-3. Check:
-   - Code matches
-   - `expiresAt` > now (not expired)
-4. If valid:
-   - Delete the code record (single-use)
-   - Look up user in Users table (optional — for display name)
-   - Return `{ valid: true, name: "...", token: "..." }`
-5. If invalid:
-   - Return `{ valid: false }`
-
-### 3. Updated `list_matters` Action
-
-**Change:** Filter matters based on who's asking.
-
-**Flow:**
-1. Receive `{ email }`
-2. Determine role from email domain:
-   - If domain is `rklacylaw.com`, `amino-integration.com`, or `aminoimmigration.com` → admin
-   - Otherwise → partner
-3. If admin: Return all matters (no filter)
-4. If partner: Filter matters where:
-   - `variables.ATTORNEY_1_EMAIL` = email, OR
-   - `variables.ATTORNEY_2_EMAIL` = email
-
-**Airtable Formula for Partner Filter:**
-```
-OR(
-  FIND(LOWER({email}), LOWER({variables})),
-  {attorney_1_email} = {email},
-  {attorney_2_email} = {email}
-)
+```json
+{
+  "action": "action_name",
+  "email": "user@example.com",
+  ...action-specific fields
+}
 ```
 
-If `variables` is stored as JSON text, the simplest n8n approach is:
-- Fetch all matters
-- In a Function node, filter by checking `JSON.parse(variables).ATTORNEY_1_EMAIL === email` or `ATTORNEY_2_EMAIL === email`
-- Return filtered results
+### Parse Request Node
 
-## Data Flow
+Extracts a clean routing object from the raw webhook input:
 
-### Reference Data Seeding
+```json
+{
+  "action": "body.action || query.action",
+  "email": "body.email || query.email",
+  "recordId": "body.recordId || query.recordId",
+  "entityId": "body.entityId || query.entityId",
+  "body": { ...full body }
+}
+```
 
-On initial load, the frontend seeds reference tables from existing matter data:
+### Route (Switch Node)
 
-1. Matters are loaded via `list_matters`
-2. `seedRef()` extracts unique facilities, wardens, attorneys, field offices, courts, and officials from matter variables
-3. Deduplication prevents creating duplicate entries
-4. Seeded records are marked with `createdBy: "system (seeded from matters)"`
+Routes on `action` to 9 pipelines:
 
-### Intake Form
+| Output | Action | Pipeline |
+|--------|--------|----------|
+| 0 | `list_matters` | Search All Matter Ops → Materialize All Matters → Respond |
+| 1 | `get_matter` | Search Entity Ops → Search Active Template → Materialize Single Matter → Respond |
+| 2 | `create_matter` | Build Create Ops → Insert Create Ops → Collect Results → Respond |
+| 3 | `save_fields` | Build Save Ops → Insert Save Ops → Respond |
+| 4 | `advance_stage` | Build Stage Op → Insert Stage Op → Respond |
+| 5 | `list_directory` | Search Directory Ops → Search Directory Relationships → Materialize Directory → Respond |
+| 6 | `get_facility` | Search Facility Ops → Search Facility Relationships → Materialize Facility Detail → Respond |
+| 7 | `save_facility` | Build Facility Save Ops → Insert Facility Ops → Respond |
+| 8 | `get_entity_history` | Search History Ops → Format Entity History → Respond |
 
-The intake form now uses **single-select dropdowns** for all reference fields:
+---
 
-- **Facility** -> dropdown from Facilities table, auto-fills Location
-- **Warden** -> dropdown from Wardens table (filtered by selected facility)
-- **Circuit** -> hardcoded dropdown (1st-11th, D.C.)
-- **District Court** -> dropdown from Courts table, auto-fills Division and Location
-- **Field Office** -> dropdown from Field Offices table, auto-fills FOD name
-- **ICE Director** -> dropdown from Officials table (filtered to ICE Director)
-- **DHS Secretary** -> dropdown from Officials table (filtered to DHS Secretary)
-- **Attorney General** -> dropdown from Officials table (filtered to Attorney General)
-- **Lead Attorney** -> dropdown from Attorneys table, auto-fills all contact fields
-- **Co-Counsel** -> dropdown from Attorneys table, auto-fills all contact fields
+## Action Details
 
-### Editor Form
+### 1. `list_matters`
 
-The editor sidebar uses the same single-select pattern:
+**Purpose:** List all matters the requesting user has access to.
 
-- Reference fields render as `<select>` elements
-- Linked/dependent fields render as readonly `<input>` elements
-- Selecting a parent value auto-fills child values
-- Live preview updates in real-time
+**Request:**
+```json
+{ "action": "list_matters", "email": "user@example.com" }
+```
 
-### Create Matter Payload
+**Pipeline:**
+1. **Search All Matter Ops** — Airtable search: `{entity_type}='matter'` (returns all ops)
+2. **Materialize All Matters** — Code node that:
+   - Groups operations by `entity_id`
+   - Replays ops in chronological order to reconstruct each matter's current state
+   - Computes `daysInStage` from the timestamp of the last stage-setting op
+   - Skips matters destroyed by `NUL` ops
+   - **Attorney scoping:** Filters to matters where `owner === requestEmail`, or `demo === true`, or `requestEmail === 'dev@local'`
 
-The `create_matter` action now receives expanded fields:
+**Response:**
+```json
+{
+  "matters": [
+    {
+      "id": "mat_...",
+      "name": "John Doe — Habeas",
+      "petitionerName": "John Doe",
+      "stage": "Intake",
+      "circuit": "4th",
+      "facility": "Farmville Detention Center",
+      "facilityLocation": "Farmville, VA",
+      "daysInStage": 5,
+      "filingDate": "",
+      "daysToFiling": null,
+      "bondGranted": null,
+      "caseNumber": "",
+      "country": "Guatemala",
+      "owner": "attorney@firm.com",
+      "demo": false,
+      "lastUpdated": "2025-06-01T12:00:00.000Z",
+      "lastUpdatedBy": "attorney@firm.com"
+    }
+  ]
+}
+```
 
+### 2. `get_matter`
+
+**Purpose:** Get a single matter's full state, template, provenance, and ops log.
+
+**Request:**
+```json
+{ "action": "get_matter", "email": "user@example.com", "recordId": "mat_..." }
+```
+
+**Pipeline:**
+1. **Search Entity Ops** — Airtable search: `{entity_id}='<recordId>'`
+2. **Search Active Template** — Airtable search: `AND({entity_type}='template', {Status}='Active')` (returns first match)
+3. **Materialize Single Matter** — Code node that:
+   - Replays all ops chronologically to reconstruct state
+   - Builds a `variables` map for the template editor (all uppercase keys like `PETITIONER_NAME`, `DETENTION_FACILITY`, etc.)
+   - Builds a `provenance` map tracking which agent last set each field and when
+   - Extracts `connections` from CON ops
+   - Attaches the active template HTML
+
+**Response:**
+```json
+{
+  "matter": {
+    "id": "mat_...",
+    "name": "...",
+    "petitionerName": "...",
+    "stage": "Intake",
+    "circuit": "4th",
+    "owner": "attorney@firm.com",
+    "demo": false,
+    "variables": {
+      "PETITIONER_NAME": "...",
+      "PETITIONER_COUNTRY": "...",
+      "ENTRY_DATE": "...",
+      "YEARS_RESIDENCE": "...",
+      "APPREHENSION_LOCATION": "...",
+      "APPREHENSION_DATE": "...",
+      "CRIMINAL_HISTORY": "...",
+      "COMMUNITY_TIES": "...",
+      "DETENTION_FACILITY": "...",
+      "FACILITY_LOCATION": "...",
+      "WARDEN_NAME": "...",
+      "FOD_NAME": "...",
+      "FIELD_OFFICE": "...",
+      "ICE_DIRECTOR": "Todd M. Lyons",
+      "DHS_SECRETARY": "Kristi Noem",
+      "AG_NAME": "Pamela Bondi",
+      "DISTRICT_FULL": "...",
+      "DIVISION": "...",
+      "COURT_LOCATION": "...",
+      "CASE_NUMBER": "...",
+      "JUDGE_CODE": "...",
+      "FILING_DATE": "...",
+      "ATTORNEY_1_NAME": "...",
+      "ATTORNEY_1_BAR": "...",
+      "ATTORNEY_1_FIRM": "...",
+      "ATTORNEY_1_ADDR": "...",
+      "ATTORNEY_1_PHONE": "...",
+      "ATTORNEY_1_EMAIL": "...",
+      "ATTORNEY_2_NAME": "...",
+      "ATTORNEY_2_BAR": "...",
+      "ATTORNEY_2_FIRM": "...",
+      "ATTORNEY_2_ADDR": "...",
+      "ATTORNEY_2_PHONE": "...",
+      "ATTORNEY_2_EMAIL": "..."
+    },
+    "connections": [
+      { "from": { "type": "matter", "id": "..." }, "to": { "type": "facility", "id": "..." }, "relation": "detained_at" }
+    ],
+    "provenance": {
+      "petitioner_name": { "agent": "user@firm.com", "at": "2025-06-01T...", "source": "intake_form" },
+      "stage": { "agent": "user@firm.com", "at": "2025-06-05T...", "source": "pipeline", "from": "Intake" }
+    }
+  },
+  "template": {
+    "html": "<html>...",
+    "name": "Habeas Petition v1",
+    "version": "1.0"
+  },
+  "ops": [
+    {
+      "op": "INS",
+      "target": { "id": "mat_...", "name": "..." },
+      "context": { "type": "matter", "source": "intake_form" },
+      "frame": { "circuit": "4th", "owner": "user@firm.com" },
+      "agent": "user@firm.com",
+      "at": "2025-06-01T12:00:00.000Z"
+    }
+  ]
+}
+```
+
+### 3. `create_matter`
+
+**Purpose:** Create a new matter with facility and warden entities plus relationships.
+
+**Request:**
 ```json
 {
   "action": "create_matter",
+  "email": "attorney@firm.com",
+  "petitionerName": "John Doe",
+  "country": "Guatemala",
+  "entryDate": "2015-03-15",
+  "yearsResidence": "10",
+  "apprehensionLocation": "Richmond, VA",
+  "apprehensionDate": "2025-01-20",
+  "criminalHistory": "None",
+  "communityTies": "Two U.S. citizen children, church membership",
+  "facility": "Farmville Detention Center",
+  "facilityLocation": "Farmville, Virginia",
+  "warden": "Jane Smith",
+  "fieldOffice": "Washington Field Office",
+  "fodName": "John Director",
+  "circuit": "4th",
+  "_updateDirectory": false,
+  "_directoryUpdates": {}
+}
+```
+
+**Pipeline:**
+1. **Build Create Ops** — Code node that generates up to 6+ operations:
+   - `INS` for the matter (entity_type: `matter`) — includes all intake fields, stage set to `Intake`, owner set to requesting email in frame
+   - `INS` for the facility (entity_type: `facility`) — idempotent by deterministic ID
+   - `INS` for the warden (entity_type: `warden`) — idempotent by deterministic ID
+   - `CON` for matter ↔ facility (relation: `detained_at`, entity_type: `relationship`)
+   - `CON` for matter ↔ warden (relation: `respondent`, entity_type: `relationship`)
+   - `ALT` ops for directory updates if `_updateDirectory` is set (updates facility fields from `_directoryUpdates`)
+2. **Insert Create Ops** — Airtable create: inserts all ops as rows. Column mapping: `operator`, `Target`, `frame`, `agent`, `Content`, `entityType`
+3. **Collect Create Results** — Finds the matter op and returns its entity_id
+
+**Response:**
+```json
+{
+  "success": true,
+  "recordId": "mat_john_doe_1708100000000",
+  "opsCreated": 5
+}
+```
+
+### 4. `save_fields`
+
+**Purpose:** Update one or more fields on a matter.
+
+**Request:**
+```json
+{
+  "action": "save_fields",
+  "email": "attorney@firm.com",
+  "recordId": "mat_...",
+  "fields": {
+    "CASE_NUMBER": "1:25-cv-00123",
+    "JUDGE_CODE": "TSE"
+  }
+}
+```
+
+**Pipeline:**
+1. **Build Save Ops** — Creates one `ALT` operation per changed field. Keys are lowercased. Skips null/undefined values. If no fields changed, returns `{ _skip: true }`.
+   - `context.source`: `"editor"`
+   - `entity_type`: `"matter"`
+2. **Insert Save Ops** — Airtable create: inserts all ops
+3. **Respond Save** — Returns `{ success: true }`
+
+**Response:**
+```json
+{ "success": true }
+```
+
+### 5. `advance_stage`
+
+**Purpose:** Move a matter to the next pipeline stage.
+
+**Request:**
+```json
+{
+  "action": "advance_stage",
+  "email": "attorney@firm.com",
+  "recordId": "mat_...",
+  "stage": "Filed",
+  "fromStage": "Drafted"
+}
+```
+
+**Pipeline:**
+1. **Build Stage Op** — Creates a single `ALT` operation for the `stage` field. If advancing to `"Filed"`, also records `filing_date` in the frame.
+   - `context.source`: `"pipeline"`
+   - `entity_type`: `"matter"`
+2. **Insert Stage Op** — Airtable create
+3. **Respond Advance** — Returns `{ success: true }`
+
+**Response:**
+```json
+{ "success": true }
+```
+
+### 6. `list_directory`
+
+**Purpose:** List all facilities with active matter counts and changelogs.
+
+**Request:**
+```json
+{ "action": "list_directory", "email": "user@example.com" }
+```
+
+**Pipeline:**
+1. **Search Directory Ops** — Airtable search: `OR({entity_type}='facility', {entity_type}='warden')`
+2. **Search Directory Relationships** — Airtable search: `OR({entity_type}='relationship', {entity_type}='matter')` (needed to count matters per facility and determine their stages)
+3. **Materialize Directory** — Code node that:
+   - Groups ops by entity_id, replays to reconstruct each facility and warden
+   - Builds per-facility changelogs from ALT ops
+   - Counts total and active (non-Resolved) matters per facility using CON relationships and matter stage data
+
+**Response:**
+```json
+{
+  "facilities": [
+    {
+      "id": "fac_farmville_detention_center",
+      "name": "Farmville Detention Center",
+      "city": "Farmville",
+      "state": "Virginia",
+      "warden_name": "Jane Smith",
+      "field_office": "Washington Field Office",
+      "fod_name": "John Director",
+      "circuit": "4th",
+      "activeMatters": 3,
+      "totalMatters": 5,
+      "lastUpdated": "2025-06-01T...",
+      "lastUpdatedBy": "admin@firm.com",
+      "changelog": [
+        {
+          "field": "warden_name",
+          "from": "Old Warden",
+          "to": "Jane Smith",
+          "agent": "admin@firm.com",
+          "at": "2025-05-15T..."
+        }
+      ]
+    }
+  ]
+}
+```
+
+### 7. `get_facility`
+
+**Purpose:** Get a single facility's full detail with changelog and linked matters.
+
+**Request:**
+```json
+{
+  "action": "get_facility",
   "email": "user@example.com",
-  "petitionerName": "...",
-  "country": "...",
-  "entryDate": "...",
-  "yearsResidence": "...",
-  "apprehensionLocation": "...",
-  "apprehensionDate": "...",
-  "facility": "...",
-  "facilityLocation": "...",
-  "warden": "...",
-  "circuit": "...",
-  "district": "...",
-  "division": "...",
-  "courtLocation": "...",
-  "fieldOffice": "...",
-  "fodName": "...",
-  "iceDirector": "...",
-  "dhsSecretary": "...",
-  "agName": "...",
-  "attorney1Name": "...",
-  "attorney1Bar": "...",
-  "attorney1Firm": "...",
-  "attorney1Addr": "...",
-  "attorney1Phone": "...",
-  "attorney1Email": "...",
-  "attorney2Name": "...",
-  "attorney2Bar": "...",
-  "attorney2Firm": "...",
-  "attorney2Addr": "...",
-  "attorney2Phone": "...",
-  "attorney2Email": "...",
-  "criminalHistory": "...",
-  "communityTies": "..."
+  "entityId": "fac_farmville_detention_center"
 }
 ```
 
-## n8n Workflow Updates Needed
+**Pipeline:**
+1. **Search Facility Ops** — Airtable search: `{entity_id}='<entityId>'`
+2. **Search Facility Relationships** — Airtable search: `AND({entity_type}='relationship', FIND('<entityId>', {entity_id}))` (finds CON ops referencing this facility)
+3. **Materialize Facility Detail** — Code node that:
+   - Replays facility ops to build current state and changelog
+   - Builds per-field provenance map
+   - Extracts linked matters from `detained_at` relationships
 
-### 1. Create Reference Tables in Airtable
-
-Create the six reference tables described above in Airtable with the specified fields.
-
-### 2. Add `list_ref_data` Webhook Handler
-
-Should query all six reference tables and return them in a single response.
-
-### 3. Add `save_ref_record` Webhook Handler
-
-Should create or update a record in the specified reference table. Include provenance fields (`updatedBy`, `updatedAt`) on every write.
-
-### 4. Add `delete_ref_record` Webhook Handler
-
-Should delete a record from the specified reference table by ID.
-
-### 5. Update `create_matter` Handler
-
-The handler should now:
-
-1. Accept the expanded payload with attorney details, court info, officials, etc.
-2. Map fields to the appropriate template variables in the matter record
-3. Create links to reference table records where applicable
-
-### 6. Provenance Tracking
-
-Every write operation to reference tables should:
-
-- Set `createdBy` and `createdAt` on creation
-- Set `updatedBy` and `updatedAt` on every update
-- Use the `email` field from the request payload as the user identifier
-
-## Frontend Storage
-
-Reference data is cached in `localStorage` under the key `habeas_refdata`. The structure is:
-
+**Response:**
 ```json
 {
-  "wardens": [{ "id": "...", "name": "...", "facility": "...", "createdBy": "...", "createdAt": "...", "updatedBy": "...", "updatedAt": "..." }],
-  "facilities": [{ "id": "...", "name": "...", "location": "...", ... }],
-  "attorneys": [{ "id": "...", "name": "...", "bar": "...", "firm": "...", "addr": "...", "phone": "...", "email": "...", ... }],
-  "fieldOffices": [{ "id": "...", "name": "...", "director": "...", ... }],
-  "courts": [{ "id": "...", "district": "...", "division": "...", "location": "...", ... }],
-  "officials": [{ "id": "...", "title": "...", "name": "...", "effectiveDate": "...", ... }]
+  "facility": {
+    "id": "fac_...",
+    "name": "Farmville Detention Center",
+    "city": "Farmville",
+    "state": "Virginia",
+    "warden_name": "Jane Smith",
+    "field_office": "Washington Field Office",
+    "fod_name": "John Director",
+    "circuit": "4th",
+    "fieldProvenance": {
+      "name": { "agent": "admin@firm.com", "at": "...", "source": "creation" },
+      "warden_name": { "agent": "admin@firm.com", "at": "...", "source": "edit" }
+    }
+  },
+  "changelog": [
+    { "type": "created", "agent": "...", "at": "...", "fields": { ... } },
+    { "type": "changed", "field": "warden_name", "from": "...", "to": "...", "agent": "...", "at": "..." }
+  ],
+  "linkedMatters": [
+    { "matterId": "mat_...", "relation": "detained_at", "linkedAt": "...", "linkedBy": "..." }
+  ]
 }
 ```
 
-When `list_ref_data` is implemented on the n8n side, the frontend should be updated to fetch from the API instead of relying solely on localStorage + seeding.
+### 8. `save_facility`
 
-Session data is stored in `localStorage` under the key `habeas_session`:
+**Purpose:** Update fields on a facility (or other directory entity).
 
+**Request:**
 ```json
 {
-  "email": "user@lawfirm.com",
-  "name": "User Name",
-  "role": "admin|partner",
-  "token": "...",
-  "ts": 1234567890
+  "action": "save_facility",
+  "email": "admin@firm.com",
+  "entityId": "fac_farmville_detention_center",
+  "entityType": "facility",
+  "fields": {
+    "warden_name": "New Warden",
+    "fod_name": "New Director"
+  }
 }
 ```
 
-Session check on page load — if valid session exists, skip login screen.
+**Pipeline:**
+1. **Build Facility Save Ops** — Creates one `ALT` operation per changed field. `context.source` is `"directory"`. Entity type taken from request (defaults to `"facility"`).
+2. **Insert Facility Ops** — Airtable create
+3. **Respond Facility Save** — Returns `{ success: true }`
 
-## Frontend Features (v2)
+**Response:**
+```json
+{ "success": true }
+```
 
-### Login Screen
+### 9. `get_entity_history`
 
-- Shows before any app content
-- Step 1: Enter email → calls `request_code`
-- Step 2: Enter 6-digit code → calls `verify_code`
-- Session persisted in localStorage
+**Purpose:** Get a complete chronological changelog for any entity, with per-field history and version snapshots.
 
-### Role-Based Navigation
+**Request:**
+```json
+{
+  "action": "get_entity_history",
+  "email": "user@example.com",
+  "entityId": "mat_..."
+}
+```
 
-**Partner lawyers see:**
-- My Cases (home — card grid of their active cases with next-action prompts)
-- New Case (4-step intake wizard)
+**Pipeline:**
+1. **Search History Ops** — Airtable search: `{entity_id}='<entityId>'`
+2. **Format Entity History** — Code node that:
+   - Builds a chronological `history` array with human-readable entry types (`created`, `changed`, `described`, `connected`, `recorded`, `destroyed`)
+   - Builds a `fieldHistory` map: for each field, an ordered list of every change with agent, timestamp, and source
+   - Clusters ops into `versions` using a 5-second window — ops within 5s of each other are grouped into a single version snapshot
 
-**Admin users see (in addition):**
-- Pipeline (kanban of ALL cases)
-- All Matters (table view)
-- Dashboard (analytics)
-- Reference Data (CRUD for facilities, wardens, attorneys, etc.)
-- Config button for webhook URL
+**Response:**
+```json
+{
+  "entityId": "mat_...",
+  "history": [
+    {
+      "op": "INS",
+      "type": "created",
+      "agent": "attorney@firm.com",
+      "at": "2025-06-01T12:00:00.000Z",
+      "source": "intake_form",
+      "entityType": "matter",
+      "fields": { "id": "mat_...", "name": "...", "stage": "Intake" }
+    },
+    {
+      "op": "ALT",
+      "type": "changed",
+      "agent": "attorney@firm.com",
+      "at": "2025-06-05T09:00:00.000Z",
+      "source": "pipeline",
+      "entityType": "matter",
+      "field": "stage",
+      "from": "Intake",
+      "to": "Drafted"
+    }
+  ],
+  "fieldHistory": {
+    "stage": [
+      { "action": "set", "value": "Intake", "agent": "attorney@firm.com", "at": "...", "source": "intake_form" },
+      { "action": "changed", "from": "Intake", "to": "Drafted", "agent": "attorney@firm.com", "at": "...", "source": "pipeline" }
+    ]
+  },
+  "versions": [
+    {
+      "startTime": 1717243200000,
+      "endTime": 1717243200000,
+      "at": "2025-06-01T12:00:00.000Z",
+      "agent": "attorney@firm.com",
+      "source": "intake_form",
+      "changes": [ ... ]
+    }
+  ],
+  "totalOps": 12
+}
+```
 
-### Intake Wizard (replaces single-page form)
+## Materialization Logic
 
-4 steps with progress indicator:
+### How State is Reconstructed
 
-1. **Client** — Name, country, entry date, years residence, apprehension location/date, criminal history, community ties
-2. **Detention & Court** — Facility (dropdown), warden (filtered by facility), circuit, district court (dropdown w/ auto-fill division/location)
-3. **Respondents & Attorneys** — Field office (w/ auto-fill FOD), ICE Director, DHS Secretary, AG (all from reference data), lead attorney + co-counsel (dropdowns)
-4. **Review** — Summary table of all entered data, create button
+Operations are sorted by `Created` ascending and replayed:
 
-### My Cases View
+```
+INS  → Object.assign(state, target)  (also extracts circuit/owner/demo from frame)
+ALT  → state[target.field] = target.to
+DES  → state[target.field] = target.value
+CON  → appended to connections array
+REC  → state['_rec_' + target.recognition] = true; Object.assign(state, target)
+SUP  → state['_sup_' + target.field] = target.values
+NUL  → marks entity as destroyed (excluded from results)
+```
 
-Default landing for partner lawyers. Shows:
-- Case cards with: client name, stage badge, circuit/facility, days-in-stage indicator
-- "Next step" callout on each card (context-sensitive to current stage)
-- Resolved cases collapsed at bottom
-- Empty state with clear CTA to create first case
+### Attorney Scoping
 
-### Editor Improvements
+`list_matters` filters materialized matters to only return those where:
+- `owner === requestEmail` (owner is set from the `frame.owner` field of the INS op), **OR**
+- `demo === true` (demo flag set in frame), **OR**
+- `requestEmail === 'dev@local'` (development bypass)
 
-- "Next step" banner at top of editor showing what action is needed
-- Back button goes to "My Cases" instead of "Pipeline"
+### Template Variables
 
-## Security Notes
+The `get_matter` response maps internal snake_case state fields to uppercase template variables:
 
-- Codes expire in 10 minutes — single use, deleted after verification
-- Role is determined server-side by email domain — frontend role is a hint, n8n enforces it
-- Partner filtering happens in n8n — partners can't see other attorneys' matters even if they guess a record ID (the `get_matter` endpoint should also check authorization)
-- No passwords stored — email-based verification only
-- Session has no server-side component — for production, consider adding JWT or session tokens validated by n8n
+| Internal Field | Template Variable |
+|---------------|-------------------|
+| `petitioner_name` | `PETITIONER_NAME` |
+| `country` | `PETITIONER_COUNTRY` |
+| `entry_date` | `ENTRY_DATE` |
+| `years_residence` | `YEARS_RESIDENCE` |
+| `apprehension_location` | `APPREHENSION_LOCATION` |
+| `apprehension_date` | `APPREHENSION_DATE` |
+| `criminal_history` | `CRIMINAL_HISTORY` |
+| `community_ties` | `COMMUNITY_TIES` |
+| `facility_name` | `DETENTION_FACILITY` |
+| `facility_location` | `FACILITY_LOCATION` |
+| `warden_name` | `WARDEN_NAME` |
+| `fod_name` | `FOD_NAME` |
+| `field_office` | `FIELD_OFFICE` |
+| `ice_director` | `ICE_DIRECTOR` (default: "Todd M. Lyons") |
+| `dhs_secretary` | `DHS_SECRETARY` (default: "Kristi Noem") |
+| `ag_name` | `AG_NAME` (default: "Pamela Bondi") |
+| `district_full` | `DISTRICT_FULL` |
+| `division` | `DIVISION` |
+| `court_location` | `COURT_LOCATION` |
+| `case_number` | `CASE_NUMBER` |
+| `judge_code` | `JUDGE_CODE` |
+| `filing_date` | `FILING_DATE` |
+| `attorney_1_name` | `ATTORNEY_1_NAME` |
+| `attorney_1_bar` | `ATTORNEY_1_BAR` |
+| `attorney_1_firm` | `ATTORNEY_1_FIRM` |
+| `attorney_1_addr` | `ATTORNEY_1_ADDR` |
+| `attorney_1_phone` | `ATTORNEY_1_PHONE` |
+| `attorney_1_email` | `ATTORNEY_1_EMAIL` |
+| `attorney_2_name` | `ATTORNEY_2_NAME` |
+| `attorney_2_bar` | `ATTORNEY_2_BAR` |
+| `attorney_2_firm` | `ATTORNEY_2_FIRM` |
+| `attorney_2_addr` | `ATTORNEY_2_ADDR` |
+| `attorney_2_phone` | `ATTORNEY_2_PHONE` |
+| `attorney_2_email` | `ATTORNEY_2_EMAIL` |
+
+## n8n Node Inventory
+
+### Trigger
+| Node | Type | Purpose |
+|------|------|---------|
+| Webhook1 | Webhook (POST /habeas) | Single entry point for all actions |
+
+### Routing
+| Node | Type | Purpose |
+|------|------|---------|
+| Parse Request1 | Code | Extract action, email, recordId, entityId from request |
+| Route1 | Switch | Route to action-specific pipeline based on `action` field |
+
+### list_matters Pipeline
+| Node | Type | Purpose |
+|------|------|---------|
+| Search All Matter Ops1 | Airtable Search | Fetch all ops where `entity_type='matter'` |
+| Materialize All Matters1 | Code | Replay ops, reconstruct matters, apply attorney scoping |
+| Respond List1 | Respond to Webhook | Return `{ matters: [...] }` |
+
+### get_matter Pipeline
+| Node | Type | Purpose |
+|------|------|---------|
+| Search Entity Ops1 | Airtable Search | Fetch all ops for the requested `entity_id` |
+| Search Active Template1 | Airtable Search | Fetch active template (`entity_type='template'`, `Status='Active'`) |
+| Materialize Single Matter1 | Code | Replay ops, build variables/provenance, attach template |
+| Respond Get1 | Respond to Webhook | Return `{ matter, template, ops }` |
+
+### create_matter Pipeline
+| Node | Type | Purpose |
+|------|------|---------|
+| Build Create Ops1 | Code | Generate INS/CON/ALT ops for matter, facility, warden, relationships |
+| Insert Create Ops1 | Airtable Create | Insert all ops into Habeas Operations |
+| Collect Create Results1 | Code | Extract matter entity_id from created records |
+| Respond Create1 | Respond to Webhook | Return `{ success, recordId, opsCreated }` |
+
+### save_fields Pipeline
+| Node | Type | Purpose |
+|------|------|---------|
+| Build Save Ops1 | Code | Generate ALT ops for each changed field |
+| Insert Save Ops1 | Airtable Create | Insert ops |
+| Respond Save1 | Respond to Webhook | Return `{ success: true }` |
+
+### advance_stage Pipeline
+| Node | Type | Purpose |
+|------|------|---------|
+| Build Stage Op1 | Code | Generate ALT op for stage field (records filing_date if advancing to Filed) |
+| Insert Stage Op1 | Airtable Create | Insert op |
+| Respond Advance1 | Respond to Webhook | Return `{ success: true }` |
+
+### list_directory Pipeline
+| Node | Type | Purpose |
+|------|------|---------|
+| Search Directory Ops | Airtable Search | Fetch all `facility` and `warden` entity ops |
+| Search Directory Relationships | Airtable Search | Fetch all `relationship` and `matter` entity ops |
+| Materialize Directory | Code | Reconstruct facilities, count linked matters, build changelogs |
+| Respond Directory | Respond to Webhook | Return `{ facilities: [...] }` |
+
+### get_facility Pipeline
+| Node | Type | Purpose |
+|------|------|---------|
+| Search Facility Ops | Airtable Search | Fetch all ops for the requested facility entity_id |
+| Search Facility Relationships | Airtable Search | Fetch CON ops referencing this facility |
+| Materialize Facility Detail | Code | Reconstruct facility, build changelog and per-field provenance, find linked matters |
+| Respond Facility | Respond to Webhook | Return `{ facility, changelog, linkedMatters }` |
+
+### save_facility Pipeline
+| Node | Type | Purpose |
+|------|------|---------|
+| Build Facility Save Ops | Code | Generate ALT ops for each changed field |
+| Insert Facility Ops | Airtable Create | Insert ops |
+| Respond Facility Save | Respond to Webhook | Return `{ success: true }` |
+
+### get_entity_history Pipeline
+| Node | Type | Purpose |
+|------|------|---------|
+| Search History Ops | Airtable Search | Fetch all ops for the requested entity_id |
+| Format Entity History | Code | Build chronological history, per-field history, and version snapshots |
+| Respond History | Respond to Webhook | Return `{ entityId, history, fieldHistory, versions, totalOps }` |
+
+## Credentials
+
+All Airtable nodes use the credential `Habeas` (ID: `WPVUCrmWAyxs7UXo`) with token-based authentication.
+
+## Pipeline Stages
+
+Matters progress through these stages:
+
+```
+Intake → Drafted → Filed → Served → Hearing → Resolved
+```
+
+The `advance_stage` action transitions between stages. When advancing to `Filed`, the system automatically records the filing date.
+
+## CORS Configuration
+
+All response nodes include these headers:
+
+```
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Headers: Content-Type
+```
+
+The webhook node also has `allowedOrigins: *` configured.
