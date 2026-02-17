@@ -6,6 +6,10 @@ import { STAGE_CHIP_COLORS, STAGES } from '../lib/matrix';
 const STATUS_COLORS = { ready: 'green', review: 'purple', draft: 'yellow', empty: 'gray' };
 const STATUS_LABELS = { ready: 'Ready', review: 'In Review', draft: 'Draft', empty: 'Not started' };
 
+const DATE_FIELDS = ['ENTRY_DATE', 'APPREHENSION_DATE', 'FILING_DATE'];
+const COUNTRY_FIELDS = ['PETITIONER_COUNTRY'];
+const COUNTRIES = ['Afghanistan','Albania','Algeria','Argentina','Armenia','Azerbaijan','Bangladesh','Belarus','Belize','Bolivia','Bosnia and Herzegovina','Brazil','Burkina Faso','Burma (Myanmar)','Burundi','Cambodia','Cameroon','Chad','Chile','China','Colombia','Congo (DRC)','Costa Rica','Cuba','Dominican Republic','Ecuador','Egypt','El Salvador','Eritrea','Ethiopia','Gambia','Georgia','Ghana','Guatemala','Guinea','Guyana','Haiti','Honduras','India','Indonesia','Iran','Iraq','Ivory Coast','Jamaica','Jordan','Kazakhstan','Kenya','Kosovo','Kyrgyzstan','Laos','Lebanon','Liberia','Libya','Mali','Mauritania','Mexico','Moldova','Morocco','Nepal','Nicaragua','Niger','Nigeria','North Korea','Pakistan','Palestine','Panama','Paraguay','Peru','Philippines','Romania','Russia','Rwanda','Senegal','Sierra Leone','Somalia','South Korea','South Sudan','Sri Lanka','Sudan','Syria','Tajikistan','Tanzania','Thailand','Togo','Trinidad and Tobago','Tunisia','Turkey','Turkmenistan','Uganda','Ukraine','Uzbekistan','Venezuela','Vietnam','Yemen','Zimbabwe'];
+
 export default function WorkspaceScreen() {
   const {
     state, dispatch, navigate, showToast,
@@ -314,14 +318,28 @@ export default function WorkspaceScreen() {
                     {g.fields.map((f) => (
                       <div key={f} className="text-xs py-0.5 px-2 rounded hover:bg-gray-50 cursor-pointer" onClick={() => startEditVar(f)}>
                         {editingVar === f ? (
-                          <input
-                            value={editingVarValue}
-                            onChange={(e) => setEditingVarValue(e.target.value)}
-                            onBlur={saveVar}
-                            onKeyDown={(e) => { if (e.key === 'Enter') saveVar(); if (e.key === 'Escape') setEditingVar(null); }}
-                            className="w-full text-xs px-1 py-0.5 border border-blue-300 rounded"
-                            autoFocus
-                          />
+                          COUNTRY_FIELDS.includes(f) ? (
+                            <select
+                              value={editingVarValue}
+                              onChange={(e) => { setEditingVarValue(e.target.value); }}
+                              onBlur={saveVar}
+                              className="w-full text-xs px-1 py-0.5 border border-blue-300 rounded"
+                              autoFocus
+                            >
+                              <option value="">-- Select --</option>
+                              {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                          ) : (
+                            <input
+                              type={DATE_FIELDS.includes(f) ? 'date' : 'text'}
+                              value={editingVarValue}
+                              onChange={(e) => setEditingVarValue(e.target.value)}
+                              onBlur={saveVar}
+                              onKeyDown={(e) => { if (e.key === 'Enter') saveVar(); if (e.key === 'Escape') setEditingVar(null); }}
+                              className="w-full text-xs px-1 py-0.5 border border-blue-300 rounded"
+                              autoFocus
+                            />
+                          )
                         ) : (
                           <span className={variables[f] ? 'text-gray-600' : 'text-yellow-600'}>
                             {f} {variables[f] ? '\u2713' : '\u26A0'}
