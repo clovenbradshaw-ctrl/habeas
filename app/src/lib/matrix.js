@@ -18,12 +18,20 @@ const SESSION_KEY = 'habeas_session';
 const MX_TYPES = {
   matter: 'com.habeas.matter',         // case metadata in shared room
   template: 'com.habeas.template',     // templates in shared room
-  facility: 'com.habeas.facility',     // ref data in shared room
+  // Reference data (shared room)
+  facility: 'com.habeas.facility',
   warden: 'com.habeas.warden',
   attorney: 'com.habeas.attorney',
   field_office: 'com.habeas.field_office',
   court: 'com.habeas.court',
   official: 'com.habeas.official',
+  judge: 'com.habeas.judge',
+  country: 'com.habeas.country',
+  charge: 'com.habeas.charge',
+  detention_statute: 'com.habeas.detention_statute',
+  case_outcome: 'com.habeas.case_outcome',
+  bond_condition: 'com.habeas.bond_condition',
+  doc_type: 'com.habeas.doc_type',
   // Per-case room event types
   case_data: 'com.habeas.case_data',       // full case variables
   case_document: 'com.habeas.case_document', // individual document state
@@ -217,17 +225,37 @@ export async function deleteTemplate(id) {
 
 // ── Reference data (collective, in shared room) ──
 
+const REF_TYPES = [
+  'facility', 'warden', 'attorney', 'field_office', 'court', 'official',
+  'judge', 'country', 'charge', 'detention_statute', 'case_outcome', 'bond_condition', 'doc_type',
+];
+
 export async function loadRefData() {
   await ensureDataRoom();
   const events = await getAllState(_dataRoomId);
-  const refTypes = ['facility', 'warden', 'attorney', 'field_office', 'court', 'official'];
   const ref = {};
-  for (const type of refTypes) {
+  for (const type of REF_TYPES) {
     ref[type] = events
       .filter(e => e.type === MX_TYPES[type] && e.content && !e.content._deleted)
       .map(e => ({ id: e.state_key, ...e.content }));
   }
   return ref;
+}
+
+export async function saveRefRecord(type, id, data) {
+  if (!REF_TYPES.includes(type)) throw new Error(`Unknown ref type: ${type}`);
+  await ensureDataRoom();
+  await putState(_dataRoomId, MX_TYPES[type], id, {
+    ...data,
+    updatedBy: _userId,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+export async function deleteRefRecord(type, id) {
+  if (!REF_TYPES.includes(type)) throw new Error(`Unknown ref type: ${type}`);
+  await ensureDataRoom();
+  await putState(_dataRoomId, MX_TYPES[type], id, { _deleted: true });
 }
 
 // ── Case metadata (in shared room — for pipeline visibility) ──
