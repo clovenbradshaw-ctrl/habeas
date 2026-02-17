@@ -374,4 +374,53 @@ export function clearSession() {
   _dataRoomId = null;
 }
 
+// ── User management (admin only) ──
+
+export async function registerUser(username, password, displayName) {
+  // Uses the Matrix admin API to register a new user
+  return mxFetch('/_synapse/admin/v2/users/@' + encodeURIComponent(username) + ':app.aminoimmigration.com', {
+    method: 'PUT',
+    body: JSON.stringify({
+      password,
+      displayname: displayName || username,
+      admin: false,
+      deactivated: false,
+    }),
+  });
+}
+
+export async function inviteUserToDataRoom(userId) {
+  await ensureDataRoom();
+  await inviteUser(_dataRoomId, userId);
+}
+
+export async function inviteUserToAdminRoom(userId) {
+  if (!_adminRoomId) {
+    _adminRoomId = await resolveAlias(ADMIN_ROOM_ALIAS);
+  }
+  if (_adminRoomId) {
+    await inviteUser(_adminRoomId, userId);
+  }
+}
+
+export async function listUsers() {
+  // For connected mode, list joined members of the data room
+  await ensureDataRoom();
+  const data = await getJoinedMembers(_dataRoomId);
+  const adminMembers = {};
+  try {
+    if (!_adminRoomId) _adminRoomId = await resolveAlias(ADMIN_ROOM_ALIAS);
+    if (_adminRoomId) {
+      const adminData = await getJoinedMembers(_adminRoomId);
+      Object.assign(adminMembers, adminData.joined || {});
+    }
+  } catch { /* ignore */ }
+  return Object.entries(data.joined || {}).map(([userId, info]) => ({
+    userId,
+    displayName: info.display_name || userId,
+    avatarUrl: info.avatar_url || null,
+    isAdmin: !!adminMembers[userId],
+  }));
+}
+
 export { MATRIX_BASE, STAGES, STAGE_COLORS, STAGE_CHIP_COLORS, MX_TYPES };

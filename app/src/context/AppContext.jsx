@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer, useCallback, useEffect, useRef } from 'react';
-import { SEED_CASES, SEED_PIPELINE_EXTRA, SEED_TEMPLATES, SEED_REF_DATA, buildCascadeFromFacility, buildAttorneyVariables, buildCountryVariables, getDefaultDocuments } from '../lib/seedData';
+import { SEED_CASES, SEED_PIPELINE_EXTRA, SEED_TEMPLATES, SEED_REF_DATA, SEED_USERS, buildCascadeFromFacility, buildAttorneyVariables, buildCountryVariables, getDefaultDocuments } from '../lib/seedData';
 import * as mx from '../lib/matrix';
 
 const AppContext = createContext(null);
@@ -13,6 +13,7 @@ const SCREENS = {
   TEMPLATE_EDIT: 'template_edit',
   PIPELINE: 'pipeline',
   INTAKE: 'intake',
+  USERS: 'users',
 };
 
 const initialState = {
@@ -25,6 +26,7 @@ const initialState = {
   loginLoading: false,
   cases: [],
   templates: [],
+  users: [],
   refData: {},
   activeCaseId: null,
   activeDocIndex: 0,
@@ -52,7 +54,7 @@ function reducer(state, action) {
     case 'LOGIN_ERROR':
       return { ...state, loginError: action.error, loginLoading: false };
     case 'ENTER_DEMO':
-      return { ...state, isLoggedIn: true, user: { userId: '@demo:local', name: 'Demo User' }, role: 'admin', screen: SCREENS.DASHBOARD, cases: [...SEED_CASES, ...SEED_PIPELINE_EXTRA], templates: [...SEED_TEMPLATES], refData: { ...SEED_REF_DATA }, connected: false };
+      return { ...state, isLoggedIn: true, user: { userId: '@demo:local', name: 'Demo User' }, role: 'admin', screen: SCREENS.DASHBOARD, cases: [...SEED_CASES, ...SEED_PIPELINE_EXTRA], templates: [...SEED_TEMPLATES], users: [...SEED_USERS], refData: { ...SEED_REF_DATA }, connected: false };
     case 'LOGOUT': {
       mx.clearSession();
       return { ...initialState };
@@ -88,6 +90,14 @@ function reducer(state, action) {
       return { ...state, cases: [...state.cases, action.caseData] };
     case 'DELETE_CASE':
       return { ...state, cases: state.cases.filter(c => c.id !== action.caseId) };
+    case 'ARCHIVE_CASE': {
+      const cases = state.cases.map(c => c.id === action.caseId ? { ...c, archived: true } : c);
+      return { ...state, cases };
+    }
+    case 'UNARCHIVE_CASE': {
+      const cases = state.cases.map(c => c.id === action.caseId ? { ...c, archived: false } : c);
+      return { ...state, cases };
+    }
     case 'UPDATE_CASE_VARIABLE': {
       const cases = state.cases.map(c => {
         if (c.id !== action.caseId) return c;
@@ -185,6 +195,14 @@ function reducer(state, action) {
       return { ...state, templates: [...state.templates, action.template] };
     case 'DELETE_TEMPLATE':
       return { ...state, templates: state.templates.filter(t => t.id !== action.templateId) };
+    case 'ARCHIVE_TEMPLATE': {
+      const templates = state.templates.map(t => t.id === action.templateId ? { ...t, archived: true } : t);
+      return { ...state, templates };
+    }
+    case 'UNARCHIVE_TEMPLATE': {
+      const templates = state.templates.map(t => t.id === action.templateId ? { ...t, archived: false } : t);
+      return { ...state, templates };
+    }
     case 'FORK_TEMPLATE': {
       const original = state.templates.find(t => t.id === action.originalId);
       if (!original) return state;
@@ -223,6 +241,10 @@ function reducer(state, action) {
       });
       return { ...state, templates };
     }
+    case 'SET_USERS':
+      return { ...state, users: action.users };
+    case 'ADD_USER':
+      return { ...state, users: [...state.users, action.user] };
     case 'SHOW_TOAST':
       return { ...state, toast: { message: action.message, isError: action.isError || false } };
     case 'HIDE_TOAST':
@@ -530,6 +552,125 @@ export function AppProvider({ children }) {
     catch (e) { showToast('Failed to invite: ' + e.message, true); }
   }, [showToast]);
 
+  // ── Archive operations ──
+
+  const archiveCase = useCallback(async (caseId) => {
+    dispatch({ type: 'ARCHIVE_CASE', caseId });
+    if (connectedRef.current) {
+      const c = stateRef.current.cases.find(x => x.id === caseId);
+      if (c) {
+        try { await mx.saveCaseMetadata(caseId, { ...c, archived: true }); } catch (e) { console.warn(e); }
+      }
+    }
+    showToast('Case archived');
+  }, [showToast]);
+
+  const unarchiveCase = useCallback(async (caseId) => {
+    dispatch({ type: 'UNARCHIVE_CASE', caseId });
+    if (connectedRef.current) {
+      const c = stateRef.current.cases.find(x => x.id === caseId);
+      if (c) {
+        try { await mx.saveCaseMetadata(caseId, { ...c, archived: false }); } catch (e) { console.warn(e); }
+      }
+    }
+    showToast('Case unarchived');
+  }, [showToast]);
+
+  const archiveTemplate = useCallback(async (templateId) => {
+    dispatch({ type: 'ARCHIVE_TEMPLATE', templateId });
+    if (connectedRef.current) {
+      const tpl = stateRef.current.templates.find(t => t.id === templateId);
+      if (tpl) {
+        try { await mx.saveTemplate(templateId, { ...tpl, archived: true }); } catch (e) { console.warn(e); }
+      }
+    }
+    showToast('Template archived');
+  }, [showToast]);
+
+  const unarchiveTemplate = useCallback(async (templateId) => {
+    dispatch({ type: 'UNARCHIVE_TEMPLATE', templateId });
+    if (connectedRef.current) {
+      const tpl = stateRef.current.templates.find(t => t.id === templateId);
+      if (tpl) {
+        try { await mx.saveTemplate(templateId, { ...tpl, archived: false }); } catch (e) { console.warn(e); }
+      }
+    }
+    showToast('Template unarchived');
+  }, [showToast]);
+
+  // ── User management (admin only) ──
+
+  const createUser = useCallback(async ({ username, email, displayName, makeAdmin }) => {
+    const userId = `@${username}:app.aminoimmigration.com`;
+    const newUser = {
+      userId,
+      username,
+      displayName: displayName || username,
+      email,
+      isAdmin: makeAdmin || false,
+      status: 'active',
+      createdAt: new Date().toISOString(),
+    };
+
+    if (connectedRef.current) {
+      try {
+        // Generate a temporary password (user would reset on first login)
+        const tempPassword = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+        await mx.registerUser(username, tempPassword, displayName || username);
+        await mx.inviteUserToDataRoom(userId);
+        if (makeAdmin) {
+          await mx.inviteUserToAdminRoom(userId);
+        }
+      } catch (e) {
+        showToast('Failed to create user: ' + e.message, true);
+        return null;
+      }
+    }
+
+    dispatch({ type: 'ADD_USER', user: newUser });
+    showToast(`User ${displayName || username} created`);
+    return userId;
+  }, [showToast]);
+
+  const inviteUser = useCallback(async ({ username, email, displayName, makeAdmin }) => {
+    const userId = `@${username}:app.aminoimmigration.com`;
+    const newUser = {
+      userId,
+      username,
+      displayName: displayName || username,
+      email,
+      isAdmin: makeAdmin || false,
+      status: 'invited',
+      createdAt: new Date().toISOString(),
+    };
+
+    if (connectedRef.current) {
+      try {
+        await mx.inviteUserToDataRoom(userId);
+        if (makeAdmin) {
+          await mx.inviteUserToAdminRoom(userId);
+        }
+      } catch (e) {
+        showToast('Failed to invite user: ' + e.message, true);
+        return null;
+      }
+    }
+
+    dispatch({ type: 'ADD_USER', user: newUser });
+    showToast(`Invitation sent to ${displayName || username}`);
+    return userId;
+  }, [showToast]);
+
+  const loadUsers = useCallback(async () => {
+    if (!connectedRef.current) return;
+    try {
+      const users = await mx.listUsers();
+      dispatch({ type: 'SET_USERS', users });
+    } catch (e) {
+      console.warn('Failed to load users:', e);
+    }
+  }, []);
+
   const value = {
     state, dispatch, navigate, goBack, showToast,
     openCase, openTemplate,
@@ -538,6 +679,8 @@ export function AppProvider({ children }) {
     addDocToCase, addComment, resolveComment, moveCaseToStage,
     createTemplate, saveTemplateNow, forkTemplate, deleteTemplate,
     inviteAttorneyToCase,
+    archiveCase, unarchiveCase, archiveTemplate, unarchiveTemplate,
+    createUser, inviteUser, loadUsers,
     SCREENS,
   };
 

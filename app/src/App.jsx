@@ -8,6 +8,7 @@ import TemplatesScreen from './screens/TemplatesScreen';
 import TemplateEditScreen from './screens/TemplateEditScreen';
 import PipelineScreen from './screens/PipelineScreen';
 import IntakeScreen from './screens/IntakeScreen';
+import UserManagementScreen from './screens/UserManagementScreen';
 
 // SVG icon components for sidebar
 function IconDashboard() {
@@ -47,6 +48,14 @@ function IconAlert() {
     </svg>
   );
 }
+function IconUsers() {
+  return (
+    <svg className="w-[18px] h-[18px] opacity-70 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    </svg>
+  );
+}
 
 function AppShell() {
   const { state, navigate, dispatch } = useApp();
@@ -56,7 +65,7 @@ function AppShell() {
   }
 
   // Compute badge counts
-  const activeCases = state.cases.filter(c => c.stage !== 'Resolved');
+  const activeCases = state.cases.filter(c => c.stage !== 'Resolved' && !c.archived);
   const needsAttention = useMemo(() => {
     return activeCases.filter(c => {
       const days = c.daysInStage || 0;
@@ -109,7 +118,7 @@ function AppShell() {
             Overview
           </div>
           <NavItem active={isNavActive(SCREENS.DASHBOARD)} onClick={() => navigate(SCREENS.DASHBOARD)} icon={<IconDashboard />} label="Dashboard" />
-          <NavItem active={isNavActive(SCREENS.CASES)} onClick={() => navigate(SCREENS.CASES)} icon={<IconCases />} label="My Cases" badge={activeCases.length} />
+          <NavItem active={isNavActive(SCREENS.CASES)} onClick={() => navigate(SCREENS.CASES)} icon={<IconCases />} label={state.role === 'admin' ? 'All Cases' : 'My Cases'} badge={activeCases.length} />
           <NavItem active={isNavActive(SCREENS.PIPELINE)} onClick={() => navigate(SCREENS.PIPELINE)} icon={<IconPipeline />} label="Pipeline" />
 
           {/* Library section */}
@@ -123,6 +132,16 @@ function AppShell() {
             Alerts
           </div>
           <NavItem onClick={() => navigate(SCREENS.DASHBOARD)} icon={<IconAlert />} label="Needs Attention" badge={needsAttention} badgeAlert />
+
+          {/* Admin section (only for admins) */}
+          {state.role === 'admin' && (
+            <>
+              <div className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-white/25 px-3 pt-4 pb-1.5">
+                Admin
+              </div>
+              <NavItem active={isNavActive(SCREENS.USERS)} onClick={() => navigate(SCREENS.USERS)} icon={<IconUsers />} label="Users" badge={(state.users || []).length} />
+            </>
+          )}
         </nav>
 
         {/* User footer */}
@@ -166,6 +185,7 @@ function AppShell() {
             {state.screen === SCREENS.TEMPLATES && <TemplatesScreen />}
             {state.screen === SCREENS.TEMPLATE_EDIT && <TemplateEditScreen />}
             {state.screen === SCREENS.PIPELINE && <PipelineScreen />}
+            {state.screen === SCREENS.USERS && <UserManagementScreen />}
           </div>
         )}
       </main>

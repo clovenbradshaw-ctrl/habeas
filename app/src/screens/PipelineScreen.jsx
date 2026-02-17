@@ -7,7 +7,8 @@ export default function PipelineScreen() {
   const [attFilter, setAttFilter] = useState('all');
   const [dragItem, setDragItem] = useState(null);
 
-  const cases = state.cases;
+  // Filter out archived cases from pipeline
+  const cases = state.cases.filter(c => !c.archived);
   const filteredCases = attFilter === 'all'
     ? cases
     : cases.filter(c => c.owner === attFilter);
