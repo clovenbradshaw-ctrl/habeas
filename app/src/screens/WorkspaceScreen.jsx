@@ -2,15 +2,16 @@ import { useState } from 'react';
 import { useApp, SCREENS } from '../context/AppContext';
 import Chip from '../components/Chip';
 import { STAGE_CHIP_COLORS, STAGES } from '../lib/matrix';
+import { VARIABLE_GROUPS, suggestStageAdvancement } from '../lib/seedData';
 
-const STATUS_COLORS = { ready: 'green', review: 'purple', draft: 'yellow', empty: 'gray' };
-const STATUS_LABELS = { ready: 'Ready', review: 'In Review', draft: 'Draft', empty: 'Not started' };
+const STATUS_COLORS = { filed: 'blue', ready: 'green', review: 'purple', draft: 'yellow', empty: 'gray' };
+const STATUS_LABELS = { filed: 'Filed', ready: 'Ready', review: 'In Review', draft: 'Draft', empty: 'Not started' };
 
 export default function WorkspaceScreen() {
   const {
     state, dispatch, navigate, showToast,
-    advanceStage, updateCaseVariable, updateDocStatus,
-    addDocToCase, addComment, resolveComment,
+    advanceStage, updateCaseVariable, updateDocStatus, updateDocOverride,
+    addDocToCase, addComment, resolveComment, moveCaseToStage,
   } = useApp();
 
   const [showReview, setShowReview] = useState(false);
@@ -36,6 +37,11 @@ export default function WorkspaceScreen() {
   const comments = (activeCase.comments || []).filter(c => c.status !== 'resolved');
   const variables = activeCase.variables || {};
 
+  // Merge document-level overrides on top of shared variables for rendering
+  const docOverrides = selectedDoc?.variableOverrides || {};
+  const effectiveVars = { ...variables, ...docOverrides };
+  const hasOverrides = Object.keys(docOverrides).some(k => docOverrides[k]);
+
   const allVarKeys = Object.keys(variables);
   const filledVars = allVarKeys.filter(k => variables[k] && String(variables[k]).trim());
 
@@ -43,23 +49,28 @@ export default function WorkspaceScreen() {
     ? state.templates.find(t => t.id === selectedDoc.templateId)
     : null;
 
+  // Stage suggestion based on document state (Phase 3)
+  const stageSuggestion = suggestStageAdvancement(activeCase.stage, docs);
+
   const varGroups = groupVariables(variables);
 
   function groupVariables(vars) {
     const groups = [];
     const keys = Object.keys(vars);
-    const petitioner = keys.filter(k => k.startsWith('PETITIONER') || ['COUNTRY', 'ENTRY_DATE', 'YEARS_RESIDENCE', 'APPREHENSION_LOCATION', 'APPREHENSION_DATE', 'CRIMINAL_HISTORY', 'COMMUNITY_TIES'].includes(k));
+    const petitioner = keys.filter(k => k.startsWith('PETITIONER') || ['ENTRY_DATE', 'YEARS_RESIDENCE', 'APPREHENSION_LOCATION', 'APPREHENSION_DATE', 'CRIMINAL_HISTORY', 'COMMUNITY_TIES'].includes(k));
     const detention = keys.filter(k => k.startsWith('DETENTION') || k.startsWith('FACILITY') || k.startsWith('WARDEN'));
     const court = keys.filter(k => k.startsWith('DISTRICT') || k.startsWith('DIVISION') || k.startsWith('COURT') || k.startsWith('CASE_') || k.startsWith('JUDGE') || k.startsWith('FILING'));
     const officials = keys.filter(k => k.startsWith('FOD') || k.startsWith('FIELD_OFFICE') || k.startsWith('ICE') || k.startsWith('DHS') || k.startsWith('AG_'));
     const attorneys = keys.filter(k => k.startsWith('ATTORNEY'));
-    const used = new Set([...petitioner, ...detention, ...court, ...officials, ...attorneys]);
+    const ausa = keys.filter(k => k.startsWith('AUSA'));
+    const used = new Set([...petitioner, ...detention, ...court, ...officials, ...attorneys, ...ausa]);
     const other = keys.filter(k => !used.has(k));
     if (petitioner.length) groups.push({ name: 'Petitioner', fields: petitioner });
     if (detention.length) groups.push({ name: 'Detention', fields: detention });
     if (court.length) groups.push({ name: 'Court', fields: court });
     if (officials.length) groups.push({ name: 'Officials', fields: officials });
     if (attorneys.length) groups.push({ name: 'Attorneys', fields: attorneys });
+    if (ausa.length) groups.push({ name: 'Opposing Counsel', fields: ausa });
     if (other.length) groups.push({ name: 'Other', fields: other });
     return groups;
   }
@@ -67,6 +78,12 @@ export default function WorkspaceScreen() {
   async function handleAdvanceStage() {
     const newStage = await advanceStage(activeCase.id);
     if (newStage) showToast(`Stage advanced to ${newStage}`);
+  }
+
+  async function handleAcceptSuggestion() {
+    if (!stageSuggestion) return;
+    await moveCaseToStage(activeCase.id, stageSuggestion.nextStage);
+    showToast(`Stage advanced to ${stageSuggestion.nextStage}`);
   }
 
   async function handleDocStatusChange(docId, newStatus) {
@@ -136,6 +153,9 @@ export default function WorkspaceScreen() {
 
   const docComments = comments.filter(c => c.documentId === selectedDoc?.id);
 
+  // Template lineage info
+  const parentTemplate = docTemplate?.parentId ? state.templates.find(t => t.id === docTemplate.parentId) : null;
+
   return (
     <div className="space-y-3">
       {/* Header bar */}
@@ -160,8 +180,8 @@ export default function WorkspaceScreen() {
           {showExport && (
             <div className="absolute right-0 top-9 bg-white border border-gray-200 rounded-lg shadow-xl p-1 z-10 w-56">
               <div className="px-3 py-1.5 text-xs font-bold text-gray-400 uppercase tracking-wide">This document</div>
-              <button onClick={() => { exportDoc('docx', selectedDoc, variables, docTemplate); setShowExport(false); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded">Download as Word (.docx)</button>
-              <button onClick={() => { exportDoc('pdf', selectedDoc, variables, docTemplate); setShowExport(false); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded">Download as PDF</button>
+              <button onClick={() => { exportDoc('docx', selectedDoc, effectiveVars, docTemplate); setShowExport(false); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded">Download as Word (.docx)</button>
+              <button onClick={() => { exportDoc('pdf', selectedDoc, effectiveVars, docTemplate); setShowExport(false); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded">Download as PDF</button>
               <div className="border-t border-gray-100 my-1" />
               <div className="px-3 py-1.5 text-xs font-bold text-gray-400 uppercase tracking-wide">Full packet</div>
               <button onClick={() => { exportAll(activeCase); setShowExport(false); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded">Download all ready docs (.zip)</button>
@@ -170,6 +190,19 @@ export default function WorkspaceScreen() {
           )}
         </div>
       </div>
+
+      {/* Stage suggestion banner (Phase 3) */}
+      {stageSuggestion && (
+        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-2.5 flex items-center gap-3">
+          <span className="text-green-700 text-sm font-semibold flex-1">
+            {stageSuggestion.reason} &mdash; move to {stageSuggestion.nextStage}?
+          </span>
+          <button onClick={handleAcceptSuggestion} className="text-xs font-bold bg-green-600 text-white px-4 py-1.5 rounded-lg hover:bg-green-700">
+            Advance to {stageSuggestion.nextStage}
+          </button>
+          <button onClick={() => {}} className="text-xs text-gray-500 hover:text-gray-700">Dismiss</button>
+        </div>
+      )}
 
       {/* Three-panel layout */}
       <div className="flex gap-3" style={{ minHeight: 520 }}>
@@ -197,6 +230,7 @@ export default function WorkspaceScreen() {
                       <option value="draft">Draft</option>
                       <option value="review">In Review</option>
                       <option value="ready">Ready</option>
+                      <option value="filed">Filed</option>
                     </select>
                   </div>
                 </div>
@@ -211,7 +245,7 @@ export default function WorkspaceScreen() {
                   {state.templates.map(t => (
                     <button key={t.id} onClick={() => handleAddDocFromTemplate(t)} className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 border-b border-gray-100 last:border-0">
                       <div className="font-semibold text-gray-800">{t.name}</div>
-                      <div className="text-gray-400">{t.category}</div>
+                      <div className="text-gray-400">{t.category}{t.parentId ? ' (fork)' : ''}</div>
                     </button>
                   ))}
                   {state.templates.length === 0 && <div className="px-3 py-2 text-xs text-gray-400">No templates available</div>}
@@ -224,8 +258,16 @@ export default function WorkspaceScreen() {
         {/* CENTER: Document preview */}
         <div className="flex-1 min-w-0">
           <div className="border border-gray-200 rounded-lg bg-white h-full">
-            <div className="text-xs font-bold text-gray-400 uppercase tracking-widest px-3 pt-2">
-              {selectedDoc?.name || 'No document selected'}
+            <div className="flex items-center gap-2 px-3 pt-2">
+              <div className="text-xs font-bold text-gray-400 uppercase tracking-widest flex-1">
+                {selectedDoc?.name || 'No document selected'}
+              </div>
+              {parentTemplate && (
+                <span className="text-xs text-gray-400">Based on {parentTemplate.name}</span>
+              )}
+              {hasOverrides && (
+                <Chip color="orange">Has overrides</Chip>
+              )}
             </div>
             <div className="p-4">
               {!selectedDoc || selectedDoc.status === 'empty' ? (
@@ -238,16 +280,20 @@ export default function WorkspaceScreen() {
                 <div className="space-y-3">
                   <div className="text-center">
                     <div className="text-xs font-bold tracking-wide text-gray-700">UNITED STATES DISTRICT COURT</div>
-                    <div className="text-xs text-gray-500">FOR THE {(variables.DISTRICT_FULL || 'DISTRICT').toUpperCase()}</div>
+                    <div className="text-xs text-gray-500">FOR THE {(effectiveVars.DISTRICT_FULL || 'DISTRICT').toUpperCase()}</div>
                   </div>
                   <div className="border-t border-gray-200 pt-3" style={{ fontFamily: "'Source Serif 4', serif" }}>
                     {previewSections.map((sec, i) => {
+                      // Evaluate conditional sections
+                      if (!sec.required && sec.condition) {
+                        if (!evaluateCondition(sec.condition, effectiveVars)) return null;
+                      }
                       const sectionComments = docComments.filter(c => c.section === sec.name);
                       return (
                         <div key={i} className="mb-4 group relative">
                           <div className="text-xs font-bold text-gray-500 tracking-wide mb-1 text-center">{sec.name}</div>
                           {sec.content ? (
-                            <p className="text-xs text-gray-600 leading-relaxed">{renderContent(sec.content, variables)}</p>
+                            <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-line">{renderContent(sec.content, effectiveVars)}</p>
                           ) : (
                             <>
                               <div className="h-2 bg-gray-100 rounded-full w-full mb-0.5" />
@@ -293,7 +339,11 @@ export default function WorkspaceScreen() {
                 ))}
                 {docComments.length === 0 && <p className="text-xs text-gray-400 text-center py-4">No comments on this document.</p>}
                 <div className="border-t border-gray-200 pt-2 space-y-2">
-                  <input value={newCommentSection} onChange={(e) => setNewCommentSection(e.target.value)} placeholder="Section (e.g., INTRODUCTION)" className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded" />
+                  <select value={newCommentSection} onChange={(e) => setNewCommentSection(e.target.value)} className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded">
+                    <option value="">Section...</option>
+                    {(docTemplate?.sections || []).map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                    <option value="General">General</option>
+                  </select>
                   <textarea value={newCommentText} onChange={(e) => setNewCommentText(e.target.value)} placeholder="Add a comment..." className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded resize-none" rows={3} />
                   <button onClick={handleAddComment} disabled={!newCommentText.trim()} className="w-full text-xs font-semibold border border-purple-300 text-purple-600 rounded-lg py-2 hover:bg-purple-50 disabled:opacity-40">+ Add comment</button>
                 </div>
@@ -304,38 +354,41 @@ export default function WorkspaceScreen() {
               </div>
             </div>
           ) : (
-            <div className="border border-gray-200 rounded-lg bg-white h-full">
+            <div className="border border-gray-200 rounded-lg bg-white h-full overflow-y-auto" style={{ maxHeight: 520 }}>
               <div className="text-xs font-bold text-gray-400 uppercase tracking-widest px-3 pt-2">Shared Variables</div>
               <div className="p-3 space-y-2">
-                <div className="text-xs text-gray-500 mb-2">{filledVars.length}/{allVarKeys.length} filled &middot; shared across all docs</div>
+                <div className="text-xs text-gray-500 mb-2">{filledVars.length}/{allVarKeys.length} filled</div>
                 {varGroups.map((g, gi) => (
                   <div key={gi}>
                     <div className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">{g.name}</div>
-                    {g.fields.map((f) => (
-                      <div key={f} className="text-xs py-0.5 px-2 rounded hover:bg-gray-50 cursor-pointer" onClick={() => startEditVar(f)}>
-                        {editingVar === f ? (
-                          <input
-                            value={editingVarValue}
-                            onChange={(e) => setEditingVarValue(e.target.value)}
-                            onBlur={saveVar}
-                            onKeyDown={(e) => { if (e.key === 'Enter') saveVar(); if (e.key === 'Escape') setEditingVar(null); }}
-                            className="w-full text-xs px-1 py-0.5 border border-blue-300 rounded"
-                            autoFocus
-                          />
-                        ) : (
-                          <span className={variables[f] ? 'text-gray-600' : 'text-yellow-600'}>
-                            {f} {variables[f] ? '\u2713' : '\u26A0'}
-                          </span>
-                        )}
-                      </div>
-                    ))}
+                    {g.fields.map((f) => {
+                      const isOverridden = docOverrides[f] !== undefined && docOverrides[f] !== '';
+                      return (
+                        <div key={f} className="text-xs py-0.5 px-2 rounded hover:bg-gray-50 cursor-pointer" onClick={() => startEditVar(f)}>
+                          {editingVar === f ? (
+                            <input
+                              value={editingVarValue}
+                              onChange={(e) => setEditingVarValue(e.target.value)}
+                              onBlur={saveVar}
+                              onKeyDown={(e) => { if (e.key === 'Enter') saveVar(); if (e.key === 'Escape') setEditingVar(null); }}
+                              className="w-full text-xs px-1 py-0.5 border border-blue-300 rounded"
+                              autoFocus
+                            />
+                          ) : (
+                            <span className={variables[f] ? (isOverridden ? 'text-orange-600' : 'text-gray-600') : 'text-yellow-600'}>
+                              {f} {variables[f] ? '\u2713' : '\u26A0'} {isOverridden ? '(doc)' : ''}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 ))}
                 {allVarKeys.length === 0 && (
-                  <p className="text-xs text-gray-400">No variables defined for this case yet. Variables are populated from templates when documents are added.</p>
+                  <p className="text-xs text-gray-400">No variables defined for this case yet.</p>
                 )}
                 <div className="border-t border-gray-200 pt-2 mt-2">
-                  <div className="text-xs text-gray-400">Click any variable to edit inline. Values are shared across all documents.</div>
+                  <div className="text-xs text-gray-400">Click any variable to edit. Values are shared across all documents in this case.</div>
                 </div>
               </div>
             </div>
@@ -348,9 +401,9 @@ export default function WorkspaceScreen() {
 
 function renderContent(content, variables) {
   if (!content) return null;
-  const parts = content.split(/(\{\{[A-Z_]+\}\})/g);
+  const parts = content.split(/(\{\{[A-Z_0-9]+\}\})/g);
   return parts.map((part, i) => {
-    const match = part.match(/^\{\{([A-Z_]+)\}\}$/);
+    const match = part.match(/^\{\{([A-Z_0-9]+)\}\}$/);
     if (match) {
       const val = variables[match[1]];
       return (
@@ -363,21 +416,41 @@ function renderContent(content, variables) {
   });
 }
 
+function evaluateCondition(condition, variables) {
+  if (!condition) return true;
+  // Simple condition evaluator: "VAR > 180" or "HAS_VAR"
+  const compMatch = condition.match(/^([A-Z_0-9]+)\s*(>|<|>=|<=|==|!=)\s*(.+)$/);
+  if (compMatch) {
+    const val = Number(variables[compMatch[1]]) || 0;
+    const target = Number(compMatch[3]) || 0;
+    switch (compMatch[2]) {
+      case '>': return val > target;
+      case '<': return val < target;
+      case '>=': return val >= target;
+      case '<=': return val <= target;
+      case '==': return val === target;
+      case '!=': return val !== target;
+      default: return true;
+    }
+  }
+  // Boolean: just check if variable is truthy
+  return !!(variables[condition] && variables[condition] !== 'false' && variables[condition] !== '0');
+}
+
 function exportDoc(format, doc, variables, template) {
   if (!doc || !template) {
     alert('No template associated with this document.');
     return;
   }
-  // Build plain text with variable substitution
   let text = '';
   for (const sec of template.sections || []) {
+    if (!sec.required && sec.condition && !evaluateCondition(sec.condition, variables)) continue;
     text += `\n=== ${sec.name} ===\n`;
     if (sec.content) {
-      text += sec.content.replace(/\{\{([A-Z_]+)\}\}/g, (_, key) => variables[key] || `[${key}]`);
+      text += sec.content.replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => variables[key] || `[${key}]`);
     }
     text += '\n';
   }
-  // Download as text file (real app would use docx/pdf library)
   const blob = new Blob([text], { type: 'text/plain' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -388,6 +461,6 @@ function exportDoc(format, doc, variables, template) {
 }
 
 function exportAll(activeCase) {
-  const readyDocs = (activeCase.documents || []).filter(d => d.status === 'ready');
-  alert(`Would export ${readyDocs.length} ready document(s) as a zip package.`);
+  const readyDocs = (activeCase.documents || []).filter(d => d.status === 'ready' || d.status === 'filed');
+  alert(`Would export ${readyDocs.length} document(s) as a zip package.`);
 }

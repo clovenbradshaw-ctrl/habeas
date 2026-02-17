@@ -35,7 +35,7 @@ export default function PipelineScreen() {
     if (docs.length === 0) {
       return c.docReadiness || { ready: 0, total: 0 };
     }
-    const ready = docs.filter(d => d.status === 'ready').length;
+    const ready = docs.filter(d => d.status === 'ready' || d.status === 'filed').length;
     return { ready, total: docs.length };
   }
 

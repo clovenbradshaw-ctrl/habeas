@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer, useCallback, useEffect, useRef } from 'react';
-import { SEED_CASES, SEED_PIPELINE_EXTRA, SEED_TEMPLATES } from '../lib/seedData';
+import { SEED_CASES, SEED_PIPELINE_EXTRA, SEED_TEMPLATES, SEED_REF_DATA, buildCascadeFromFacility, buildAttorneyVariables, buildCountryVariables, getDefaultDocuments } from '../lib/seedData';
 import * as mx from '../lib/matrix';
 
 const AppContext = createContext(null);
@@ -50,7 +50,7 @@ function reducer(state, action) {
     case 'LOGIN_ERROR':
       return { ...state, loginError: action.error, loginLoading: false };
     case 'ENTER_DEMO':
-      return { ...state, isLoggedIn: true, user: { userId: '@demo:local', name: 'Demo User' }, role: 'admin', screen: SCREENS.CASES, cases: [...SEED_CASES, ...SEED_PIPELINE_EXTRA], templates: [...SEED_TEMPLATES], connected: false };
+      return { ...state, isLoggedIn: true, user: { userId: '@demo:local', name: 'Demo User' }, role: 'admin', screen: SCREENS.CASES, cases: [...SEED_CASES, ...SEED_PIPELINE_EXTRA], templates: [...SEED_TEMPLATES], refData: { ...SEED_REF_DATA }, connected: false };
     case 'LOGOUT': {
       mx.clearSession();
       return { ...initialState };
@@ -97,6 +97,10 @@ function reducer(state, action) {
       const cases = state.cases.map(c => c.id !== action.caseId ? c : { ...c, variables: action.variables });
       return { ...state, cases };
     }
+    case 'MERGE_CASE_VARIABLES': {
+      const cases = state.cases.map(c => c.id !== action.caseId ? c : { ...c, variables: { ...c.variables, ...action.variables } });
+      return { ...state, cases };
+    }
     case 'SET_CASE_DOCUMENTS': {
       const cases = state.cases.map(c => c.id !== action.caseId ? c : { ...c, documents: action.documents });
       return { ...state, cases };
@@ -109,6 +113,18 @@ function reducer(state, action) {
       const cases = state.cases.map(c => {
         if (c.id !== action.caseId) return c;
         const documents = (c.documents || []).map(d => d.id === action.docId ? { ...d, status: action.status } : d);
+        return { ...c, documents };
+      });
+      return { ...state, cases };
+    }
+    case 'UPDATE_DOCUMENT_OVERRIDE': {
+      const cases = state.cases.map(c => {
+        if (c.id !== action.caseId) return c;
+        const documents = (c.documents || []).map(d => {
+          if (d.id !== action.docId) return d;
+          const overrides = { ...(d.variableOverrides || {}), [action.key]: action.value };
+          return { ...d, variableOverrides: overrides };
+        });
         return { ...c, documents };
       });
       return { ...state, cases };
@@ -152,6 +168,13 @@ function reducer(state, action) {
       });
       return { ...state, cases };
     }
+    case 'MOVE_TO_STAGE': {
+      const cases = state.cases.map(c => {
+        if (c.id !== action.caseId) return c;
+        return { ...c, stage: action.stage, daysInStage: 0 };
+      });
+      return { ...state, cases };
+    }
     case 'UPDATE_TEMPLATE': {
       const templates = state.templates.map(t => t.id === action.templateId ? { ...t, ...action.data } : t);
       return { ...state, templates };
@@ -163,7 +186,7 @@ function reducer(state, action) {
     case 'FORK_TEMPLATE': {
       const original = state.templates.find(t => t.id === action.originalId);
       if (!original) return state;
-      const forked = { ...JSON.parse(JSON.stringify(original)), id: action.newId, name: `${original.name} (Fork)`, docs: 0, lastUsed: Date.now() };
+      const forked = { ...JSON.parse(JSON.stringify(original)), id: action.newId, name: `${original.name} (Fork)`, parentId: action.originalId, docs: 0, lastUsed: Date.now() };
       return { ...state, templates: [...state.templates, forked] };
     }
     case 'ADD_TEMPLATE_SECTION': {
@@ -292,13 +315,54 @@ export function AppProvider({ children }) {
 
   const createCase = useCallback(async (caseData) => {
     const id = `case_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+
+    // Auto-populate documents from doc types if none provided
+    let documents = caseData.documents || [];
+    if (documents.length === 0) {
+      const docTypes = stateRef.current.refData?.doc_type || [];
+      if (docTypes.length > 0) {
+        documents = getDefaultDocuments(docTypes, stateRef.current.templates);
+      }
+    }
+
+    // Build cascade variables from facility if facilityId is provided
+    let cascadeVars = {};
+    if (caseData.facilityId && Object.keys(stateRef.current.refData).length > 0) {
+      const rd = stateRef.current.refData;
+      const result = buildCascadeFromFacility(caseData.facilityId, {
+        facilities: rd.facility || [],
+        fieldOffices: rd.field_office || [],
+        wardens: rd.warden || [],
+        courts: rd.court || [],
+        officials: rd.official || [],
+        attorneys: rd.attorney || [],
+      });
+      cascadeVars = result.variables || {};
+    }
+
+    // Build country variables if countryId provided
+    if (caseData.countryId && stateRef.current.refData?.country) {
+      const countryVars = buildCountryVariables(caseData.countryId, stateRef.current.refData.country);
+      cascadeVars = { ...cascadeVars, ...countryVars };
+    }
+
+    // Build attorney variables if leadAttorneyId provided
+    if (caseData.leadAttorneyId && stateRef.current.refData?.attorney) {
+      const attorney = stateRef.current.refData.attorney.find(a => a.id === caseData.leadAttorneyId);
+      if (attorney) {
+        cascadeVars = { ...cascadeVars, ...buildAttorneyVariables(attorney, 1) };
+      }
+    }
+
+    const variables = { ...cascadeVars, ...caseData.variables };
+
     const newCase = {
       id, ...caseData,
       owner: mx.getUserId() || stateRef.current.user?.userId,
       lastUpdated: new Date().toISOString(),
-      documents: caseData.documents || [],
+      documents,
       comments: [],
-      variables: caseData.variables || {},
+      variables,
       daysInStage: 0,
     };
     dispatch({ type: 'ADD_CASE', caseData: newCase });
@@ -308,7 +372,11 @@ export function AppProvider({ children }) {
         await mx.saveCaseMetadata(id, {
           petitionerName: newCase.petitionerName, stage: newCase.stage,
           circuit: newCase.circuit, facility: newCase.facility,
-          facilityLocation: newCase.facilityLocation, daysInStage: 0,
+          facilityId: newCase.facilityId, facilityLocation: newCase.facilityLocation,
+          courtId: newCase.courtId, countryId: newCase.countryId,
+          detentionStatuteId: newCase.detentionStatuteId,
+          chargeIds: newCase.chargeIds, leadAttorneyId: newCase.leadAttorneyId,
+          daysInStage: 0,
           owner: newCase.owner, docReadiness: getDocReadiness(newCase.documents),
         });
         if (Object.keys(newCase.variables).length > 0) {
@@ -337,12 +405,34 @@ export function AppProvider({ children }) {
     return newStage;
   }, []);
 
+  const moveCaseToStage = useCallback(async (caseId, newStage) => {
+    dispatch({ type: 'MOVE_TO_STAGE', caseId, stage: newStage });
+    if (connectedRef.current) {
+      const c = stateRef.current.cases.find(x => x.id === caseId);
+      if (c) {
+        try { await mx.saveCaseMetadata(caseId, { ...c, stage: newStage, daysInStage: 0 }); } catch (e) { console.warn(e); }
+      }
+    }
+  }, []);
+
   const updateCaseVariable = useCallback(async (caseId, key, value) => {
     dispatch({ type: 'UPDATE_CASE_VARIABLE', caseId, key, value });
     if (connectedRef.current) {
       const c = stateRef.current.cases.find(x => x.id === caseId);
       const updated = { ...(c?.variables || {}), [key]: value };
       try { await mx.saveCaseVariables(caseId, updated); } catch (e) { console.warn(e); }
+    }
+  }, []);
+
+  const updateDocOverride = useCallback(async (caseId, docId, key, value) => {
+    dispatch({ type: 'UPDATE_DOCUMENT_OVERRIDE', caseId, docId, key, value });
+    if (connectedRef.current) {
+      const c = stateRef.current.cases.find(x => x.id === caseId);
+      const doc = (c?.documents || []).find(d => d.id === docId);
+      if (doc) {
+        const overrides = { ...(doc.variableOverrides || {}), [key]: value };
+        try { await mx.saveCaseDocument(caseId, docId, { ...doc, variableOverrides: overrides }); } catch (e) { console.warn(e); }
+      }
     }
   }, []);
 
@@ -363,7 +453,7 @@ export function AppProvider({ children }) {
 
   const addDocToCase = useCallback(async (caseId, template) => {
     const docId = `doc_${Date.now()}`;
-    const doc = { id: docId, templateId: template.id, name: template.name, status: 'draft', sections: [] };
+    const doc = { id: docId, templateId: template.id, name: template.name, status: 'draft', variableOverrides: {}, sections: [] };
     dispatch({ type: 'ADD_DOCUMENT_TO_CASE', caseId, doc });
     if (connectedRef.current) {
       try {
@@ -389,21 +479,11 @@ export function AppProvider({ children }) {
     }
   }, []);
 
-  const moveCaseToStage = useCallback(async (caseId, newStage) => {
-    dispatch({ type: 'UPDATE_CASE', caseId, data: { stage: newStage, daysInStage: 0 } });
-    if (connectedRef.current) {
-      const c = stateRef.current.cases.find(x => x.id === caseId);
-      if (c) {
-        try { await mx.saveCaseMetadata(caseId, { ...c, stage: newStage, daysInStage: 0 }); } catch (e) { console.warn(e); }
-      }
-    }
-  }, []);
-
   // ── Template operations ──
 
   const createTemplate = useCallback(async (templateData) => {
     const id = `tpl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    const template = { id, ...templateData, docs: 0, lastUsed: Date.now() };
+    const template = { id, ...templateData, parentId: templateData.parentId || null, docs: 0, lastUsed: Date.now() };
     dispatch({ type: 'ADD_TEMPLATE', template });
     if (connectedRef.current) {
       try { await mx.saveTemplate(id, template); } catch (e) { console.warn(e); }
@@ -452,7 +532,7 @@ export function AppProvider({ children }) {
     state, dispatch, navigate, goBack, showToast,
     openCase, openTemplate,
     doLogin, enterDemo,
-    createCase, advanceStage, updateCaseVariable, updateDocStatus,
+    createCase, advanceStage, updateCaseVariable, updateDocStatus, updateDocOverride,
     addDocToCase, addComment, resolveComment, moveCaseToStage,
     createTemplate, saveTemplateNow, forkTemplate, deleteTemplate,
     inviteAttorneyToCase,
@@ -488,7 +568,7 @@ async function loadRemoteData(dispatch) {
 
 function getDocReadiness(documents) {
   if (!documents || documents.length === 0) return { ready: 0, total: 0 };
-  return { ready: documents.filter(d => d.status === 'ready').length, total: documents.length };
+  return { ready: documents.filter(d => d.status === 'ready' || d.status === 'filed').length, total: documents.length };
 }
 
 export function useApp() {

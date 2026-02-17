@@ -191,6 +191,11 @@ export default function TemplatesScreen() {
               <div className="flex-1">
                 <div className="font-bold text-gray-900 text-sm">{t.name}</div>
                 <div className="text-xs text-gray-500 mt-0.5">{t.desc}</div>
+                {t.parentId && (
+                  <div className="text-xs text-purple-500 mt-0.5">
+                    Forked from: {state.templates.find(p => p.id === t.parentId)?.name || t.parentId}
+                  </div>
+                )}
                 <div className="flex items-center gap-3 mt-2">
                   <span className="text-xs text-gray-400">{t.sections?.length || 0} sections</span>
                   <span className="text-xs text-gray-400">{t.variables?.length || 0} variables</span>
