@@ -1,10 +1,52 @@
+import { useMemo } from 'react';
 import { AppProvider, useApp, SCREENS } from './context/AppContext';
 import LoginScreen from './screens/LoginScreen';
+import DashboardScreen from './screens/DashboardScreen';
 import CasesScreen from './screens/CasesScreen';
 import WorkspaceScreen from './screens/WorkspaceScreen';
 import TemplatesScreen from './screens/TemplatesScreen';
 import TemplateEditScreen from './screens/TemplateEditScreen';
 import PipelineScreen from './screens/PipelineScreen';
+import IntakeScreen from './screens/IntakeScreen';
+
+// SVG icon components for sidebar
+function IconDashboard() {
+  return (
+    <svg className="w-[18px] h-[18px] opacity-70 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+      <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+    </svg>
+  );
+}
+function IconCases() {
+  return (
+    <svg className="w-[18px] h-[18px] opacity-70 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+    </svg>
+  );
+}
+function IconPipeline() {
+  return (
+    <svg className="w-[18px] h-[18px] opacity-70 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+      <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+    </svg>
+  );
+}
+function IconTemplates() {
+  return (
+    <svg className="w-[18px] h-[18px] opacity-70 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+    </svg>
+  );
+}
+function IconAlert() {
+  return (
+    <svg className="w-[18px] h-[18px] opacity-70 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+    </svg>
+  );
+}
 
 function AppShell() {
   const { state, navigate, dispatch } = useApp();
@@ -13,95 +55,125 @@ function AppShell() {
     return <LoginScreen />;
   }
 
-  const navItems = [
-    { id: SCREENS.CASES, label: 'My Cases' },
-    { id: SCREENS.PIPELINE, label: 'Pipeline' },
-    { id: SCREENS.TEMPLATES, label: 'Templates' },
-  ];
-
-  const screenLabels = {
-    [SCREENS.CASES]: 'My Cases',
-    [SCREENS.WORKSPACE]: 'Case Workspace',
-    [SCREENS.TEMPLATES]: 'Template Library',
-    [SCREENS.TEMPLATE_EDIT]: 'Template Editor',
-    [SCREENS.PIPELINE]: 'Pipeline',
-  };
+  // Compute badge counts
+  const activeCases = state.cases.filter(c => c.stage !== 'Resolved');
+  const needsAttention = useMemo(() => {
+    return activeCases.filter(c => {
+      const days = c.daysInStage || 0;
+      if (days > 10) return true;
+      const emptyVars = c.variables ? Object.values(c.variables).filter(v => !v || !String(v).trim()).length : 0;
+      if (emptyVars > 3) return true;
+      const openComments = (c.comments || []).filter(cm => cm.status === 'open').length;
+      if (openComments > 0 && c.stage === 'Attorney Review') return true;
+      return false;
+    }).length;
+  }, [activeCases]);
 
   function isNavActive(navId) {
     if (state.screen === navId) return true;
     if (state.screen === SCREENS.WORKSPACE && navId === SCREENS.CASES) return true;
+    if (state.screen === SCREENS.INTAKE && navId === SCREENS.CASES) return true;
     if (state.screen === SCREENS.TEMPLATE_EDIT && navId === SCREENS.TEMPLATES) return true;
     return false;
   }
 
+  // Workspace and Intake get full-width layout (no padding container)
+  const isFullWidth = state.screen === SCREENS.WORKSPACE || state.screen === SCREENS.INTAKE;
+
+  const userInitials = (state.user?.name || state.user?.userId || 'U')
+    .split(/[\s@]/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(s => s[0]?.toUpperCase())
+    .join('');
+
   return (
-    <div className="flex h-screen bg-gray-50 text-gray-900" style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+    <div className="flex h-screen bg-[#f8f7f5] text-gray-900" style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
       {/* Sidebar */}
-      <div className="w-48 bg-gray-900 flex flex-col flex-shrink-0">
-        <div className="p-4">
-          <div className="text-white font-bold text-base tracking-tight" style={{ fontFamily: "'Source Serif 4', serif" }}>
+      <aside className="w-[220px] min-w-[220px] bg-[#1a1a1e] flex flex-col sticky top-0 h-screen z-50">
+        {/* Brand */}
+        <div className="px-5 pt-6 pb-5 border-b border-white/[0.06]">
+          <h1 className="text-white font-bold text-[1.4rem] tracking-tight" style={{ fontFamily: "'Source Serif 4', serif" }}>
             Habeas
-          </div>
-          <div className="text-gray-500 text-xs mt-0.5">
+          </h1>
+          <div className="text-[0.7rem] text-white/35 mt-0.5 flex items-center gap-[5px]">
+            {state.connected && <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />}
             {state.connected ? 'Connected' : 'Demo Mode'}
           </div>
         </div>
-        <div className="flex-1 px-2 space-y-0.5">
-          {navItems.map((n) => (
-            <button
-              key={n.id}
-              onClick={() => navigate(n.id)}
-              className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                isNavActive(n.id)
-                  ? 'bg-white/10 text-white font-semibold'
-                  : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
-              }`}
-            >
-              {n.label}
-            </button>
-          ))}
-        </div>
-        <div className="p-3 border-t border-white/10">
-          <div className="text-xs text-gray-500 truncate mb-2">{state.user?.name || state.user?.userId}</div>
+
+        {/* Navigation */}
+        <nav className="flex-1 px-2 py-3">
+          {/* Overview section */}
+          <div className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-white/25 px-3 pt-3 pb-1.5">
+            Overview
+          </div>
+          <NavItem active={isNavActive(SCREENS.DASHBOARD)} onClick={() => navigate(SCREENS.DASHBOARD)} icon={<IconDashboard />} label="Dashboard" />
+          <NavItem active={isNavActive(SCREENS.CASES)} onClick={() => navigate(SCREENS.CASES)} icon={<IconCases />} label="My Cases" badge={activeCases.length} />
+          <NavItem active={isNavActive(SCREENS.PIPELINE)} onClick={() => navigate(SCREENS.PIPELINE)} icon={<IconPipeline />} label="Pipeline" />
+
+          {/* Library section */}
+          <div className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-white/25 px-3 pt-4 pb-1.5">
+            Library
+          </div>
+          <NavItem active={isNavActive(SCREENS.TEMPLATES)} onClick={() => navigate(SCREENS.TEMPLATES)} icon={<IconTemplates />} label="Templates" />
+
+          {/* Alerts section */}
+          <div className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-white/25 px-3 pt-4 pb-1.5">
+            Alerts
+          </div>
+          <NavItem onClick={() => navigate(SCREENS.DASHBOARD)} icon={<IconAlert />} label="Needs Attention" badge={needsAttention} badgeAlert />
+        </nav>
+
+        {/* User footer */}
+        <div className="px-5 py-4 border-t border-white/[0.06]">
+          <div className="flex items-center gap-2.5">
+            <div className="w-[30px] h-[30px] rounded-full bg-purple-500 flex items-center justify-center text-white text-[0.7rem] font-semibold">
+              {userInitials}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[0.75rem] font-semibold text-white/80 truncate">
+                {state.user?.name || state.user?.userId}
+              </div>
+              <div className="text-[0.65rem] text-white/35">
+                {state.role === 'admin' ? 'Admin' : 'Attorney'}
+              </div>
+            </div>
+          </div>
           <button
             onClick={() => dispatch({ type: 'LOGOUT' })}
-            className="w-full text-xs text-gray-500 hover:text-gray-300 text-left"
+            className="mt-2 text-[0.7rem] text-white/35 hover:text-white/60 transition-colors"
           >
             Sign out
           </button>
         </div>
-      </div>
+      </aside>
 
       {/* Main content */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-5xl mx-auto p-5">
-          {/* Breadcrumb */}
-          <div className="mb-4 pb-3 border-b border-gray-200">
-            <div className="flex items-center gap-2 text-xs text-gray-400">
-              <span className="cursor-pointer hover:text-gray-600" onClick={() => navigate(SCREENS.CASES)}>
-                Habeas
-              </span>
-              <span>&rsaquo;</span>
-              <span className="text-gray-600 font-semibold">{screenLabels[state.screen] || ''}</span>
-            </div>
+      <main className="flex-1 min-w-0 flex flex-col overflow-y-auto">
+        {isFullWidth ? (
+          <>
+            {state.screen === SCREENS.WORKSPACE && <WorkspaceScreen />}
+            {state.screen === SCREENS.INTAKE && <IntakeScreen />}
+          </>
+        ) : (
+          <div className="flex-1 p-7 max-w-[1200px] w-full mx-auto">
+            {state.loading && (
+              <div className="text-center py-4 text-sm text-gray-400">Loading...</div>
+            )}
+            {state.screen === SCREENS.DASHBOARD && <DashboardScreen />}
+            {state.screen === SCREENS.CASES && <CasesScreen />}
+            {state.screen === SCREENS.TEMPLATES && <TemplatesScreen />}
+            {state.screen === SCREENS.TEMPLATE_EDIT && <TemplateEditScreen />}
+            {state.screen === SCREENS.PIPELINE && <PipelineScreen />}
           </div>
-
-          {state.loading && (
-            <div className="text-center py-4 text-sm text-gray-400">Loading...</div>
-          )}
-
-          {state.screen === SCREENS.CASES && <CasesScreen />}
-          {state.screen === SCREENS.WORKSPACE && <WorkspaceScreen />}
-          {state.screen === SCREENS.TEMPLATES && <TemplatesScreen />}
-          {state.screen === SCREENS.TEMPLATE_EDIT && <TemplateEditScreen />}
-          {state.screen === SCREENS.PIPELINE && <PipelineScreen />}
-        </div>
-      </div>
+        )}
+      </main>
 
       {/* Toast */}
       {state.toast && (
         <div
-          className={`fixed bottom-5 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-sm font-semibold shadow-lg z-50 ${
+          className={`fixed bottom-5 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-sm font-semibold shadow-lg z-[100] ${
             state.toast.isError ? 'bg-red-600 text-white' : 'bg-gray-900 text-white'
           }`}
         >
@@ -109,6 +181,31 @@ function AppShell() {
         </div>
       )}
     </div>
+  );
+}
+
+function NavItem({ active, onClick, icon, label, badge, badgeAlert }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center gap-2.5 px-3 py-[9px] rounded-md text-[0.82rem] font-medium transition-all relative ${
+        active
+          ? 'bg-white/[0.12] text-white font-semibold'
+          : 'text-white/55 hover:bg-white/[0.06] hover:text-white/80'
+      }`}
+    >
+      {icon}
+      {label}
+      {badge !== undefined && badge > 0 && (
+        <span className={`ml-auto text-[0.65rem] font-semibold px-[7px] py-[1px] rounded-[10px] ${
+          badgeAlert
+            ? 'bg-red-500 text-white'
+            : 'bg-white/15 text-white/70'
+        }`}>
+          {badge}
+        </span>
+      )}
+    </button>
   );
 }
 

@@ -6,11 +6,13 @@ const AppContext = createContext(null);
 
 const SCREENS = {
   LOGIN: 'login',
+  DASHBOARD: 'dashboard',
   CASES: 'cases',
   WORKSPACE: 'workspace',
   TEMPLATES: 'templates',
   TEMPLATE_EDIT: 'template_edit',
   PIPELINE: 'pipeline',
+  INTAKE: 'intake',
 };
 
 const initialState = {
@@ -40,17 +42,17 @@ function reducer(state, action) {
       return { ...state, history: [...state.history, state.screen], screen: action.screen };
     case 'GO_BACK': {
       const h = [...state.history];
-      const prev = h.pop() || SCREENS.CASES;
+      const prev = h.pop() || SCREENS.DASHBOARD;
       return { ...state, screen: prev, history: h };
     }
     case 'SET_LOGIN_LOADING':
       return { ...state, loginLoading: action.loading };
     case 'LOGIN_SUCCESS':
-      return { ...state, user: action.user, role: action.role || 'partner', isLoggedIn: true, loginError: null, loginLoading: false, screen: SCREENS.CASES, connected: true };
+      return { ...state, user: action.user, role: action.role || 'partner', isLoggedIn: true, loginError: null, loginLoading: false, screen: SCREENS.DASHBOARD, connected: true };
     case 'LOGIN_ERROR':
       return { ...state, loginError: action.error, loginLoading: false };
     case 'ENTER_DEMO':
-      return { ...state, isLoggedIn: true, user: { userId: '@demo:local', name: 'Demo User' }, role: 'admin', screen: SCREENS.CASES, cases: [...SEED_CASES, ...SEED_PIPELINE_EXTRA], templates: [...SEED_TEMPLATES], refData: { ...SEED_REF_DATA }, connected: false };
+      return { ...state, isLoggedIn: true, user: { userId: '@demo:local', name: 'Demo User' }, role: 'admin', screen: SCREENS.DASHBOARD, cases: [...SEED_CASES, ...SEED_PIPELINE_EXTRA], templates: [...SEED_TEMPLATES], refData: { ...SEED_REF_DATA }, connected: false };
     case 'LOGOUT': {
       mx.clearSession();
       return { ...initialState };
