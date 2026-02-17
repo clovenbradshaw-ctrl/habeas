@@ -7,6 +7,10 @@ import { VARIABLE_GROUPS, suggestStageAdvancement } from '../lib/seedData';
 const STATUS_COLORS = { filed: 'blue', ready: 'green', review: 'purple', draft: 'yellow', empty: 'gray' };
 const STATUS_LABELS = { filed: 'Filed', ready: 'Ready', review: 'In Review', draft: 'Draft', empty: 'Not started' };
 
+const DATE_FIELDS = ['ENTRY_DATE', 'APPREHENSION_DATE', 'FILING_DATE'];
+const COUNTRY_FIELDS = ['PETITIONER_COUNTRY'];
+const COUNTRIES = ['Afghanistan','Albania','Algeria','Argentina','Armenia','Azerbaijan','Bangladesh','Belarus','Belize','Bolivia','Bosnia and Herzegovina','Brazil','Burkina Faso','Burma (Myanmar)','Burundi','Cambodia','Cameroon','Chad','Chile','China','Colombia','Congo (DRC)','Costa Rica','Cuba','Dominican Republic','Ecuador','Egypt','El Salvador','Eritrea','Ethiopia','Gambia','Georgia','Ghana','Guatemala','Guinea','Guyana','Haiti','Honduras','India','Indonesia','Iran','Iraq','Ivory Coast','Jamaica','Jordan','Kazakhstan','Kenya','Kosovo','Kyrgyzstan','Laos','Lebanon','Liberia','Libya','Mali','Mauritania','Mexico','Moldova','Morocco','Nepal','Nicaragua','Niger','Nigeria','North Korea','Pakistan','Palestine','Panama','Paraguay','Peru','Philippines','Romania','Russia','Rwanda','Senegal','Sierra Leone','Somalia','South Korea','South Sudan','Sri Lanka','Sudan','Syria','Tajikistan','Tanzania','Thailand','Togo','Trinidad and Tobago','Tunisia','Turkey','Turkmenistan','Uganda','Ukraine','Uzbekistan','Venezuela','Vietnam','Yemen','Zimbabwe'];
+
 export default function WorkspaceScreen() {
   const {
     state, dispatch, navigate, showToast,
