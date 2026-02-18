@@ -9,6 +9,7 @@ import TemplateEditScreen from './screens/TemplateEditScreen';
 import PipelineScreen from './screens/PipelineScreen';
 import IntakeScreen from './screens/IntakeScreen';
 import UserManagementScreen from './screens/UserManagementScreen';
+import VariablesReferenceScreen from './screens/VariablesReferenceScreen';
 
 // SVG icon components for sidebar
 function IconDashboard() {
@@ -48,6 +49,13 @@ function IconAlert() {
     </svg>
   );
 }
+function IconVariables() {
+  return (
+    <svg className="w-[18px] h-[18px] opacity-70 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/>
+    </svg>
+  );
+}
 function IconUsers() {
   return (
     <svg className="w-[18px] h-[18px] opacity-70 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -83,6 +91,7 @@ function AppShell() {
     if (state.screen === SCREENS.WORKSPACE && navId === SCREENS.CASES) return true;
     if (state.screen === SCREENS.INTAKE && navId === SCREENS.CASES) return true;
     if (state.screen === SCREENS.TEMPLATE_EDIT && navId === SCREENS.TEMPLATES) return true;
+    if (state.screen === SCREENS.VARIABLES_REF && navId === SCREENS.VARIABLES_REF) return true;
     return false;
   }
 
@@ -126,6 +135,7 @@ function AppShell() {
             Library
           </div>
           <NavItem active={isNavActive(SCREENS.TEMPLATES)} onClick={() => navigate(SCREENS.TEMPLATES)} icon={<IconTemplates />} label="Templates" />
+          <NavItem active={isNavActive(SCREENS.VARIABLES_REF)} onClick={() => navigate(SCREENS.VARIABLES_REF)} icon={<IconVariables />} label="Variables" />
 
           {/* Alerts section */}
           <div className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-white/25 px-3 pt-4 pb-1.5">
@@ -186,6 +196,7 @@ function AppShell() {
             {state.screen === SCREENS.TEMPLATE_EDIT && <TemplateEditScreen />}
             {state.screen === SCREENS.PIPELINE && <PipelineScreen />}
             {state.screen === SCREENS.USERS && <UserManagementScreen />}
+            {state.screen === SCREENS.VARIABLES_REF && <VariablesReferenceScreen />}
           </div>
         )}
       </main>
