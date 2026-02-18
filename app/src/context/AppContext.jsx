@@ -344,6 +344,33 @@ export function AppProvider({ children }) {
     }
   }, []);
 
+  const doRegister = useCallback(async (username, password, displayName) => {
+    dispatch({ type: 'SET_LOGIN_LOADING', loading: true });
+    try {
+      const { userId, token } = await mx.selfRegister(username, password, displayName);
+      // Try to join data room after registration
+      try { await mx.ensureDataRoom(); } catch { /* room may not exist yet */ }
+      const role = await mx.determineRole();
+      mx.saveSession({ userId, token, name: displayName || username, ts: Date.now() });
+      dispatch({ type: 'LOGIN_SUCCESS', user: { userId, name: displayName || username }, role });
+      loadRemoteData(dispatch);
+    } catch (e) {
+      dispatch({ type: 'LOGIN_ERROR', error: e.message });
+    }
+  }, []);
+
+  const changePassword = useCallback(async (oldPassword, newPassword) => {
+    if (!connectedRef.current) { showToast('Not connected to server', true); return false; }
+    try {
+      await mx.changePassword(oldPassword, newPassword);
+      showToast('Password changed successfully');
+      return true;
+    } catch (e) {
+      showToast('Failed to change password: ' + e.message, true);
+      return false;
+    }
+  }, [showToast]);
+
   const enterDemo = useCallback(() => dispatch({ type: 'ENTER_DEMO' }), []);
 
   // ── Case operations (dispatch + auto-persist to Matrix) ──
@@ -711,14 +738,51 @@ export function AppProvider({ children }) {
     }
   }, []);
 
+  const removeDocFromCase = useCallback(async (caseId, docId) => {
+    dispatch({ type: 'REMOVE_DOCUMENT_FROM_CASE', caseId, docId });
+    if (connectedRef.current) {
+      try {
+        await mx.saveCaseDocument(caseId, docId, { _deleted: true });
+        const c = stateRef.current.cases.find(x => x.id === caseId);
+        if (c) {
+          const remaining = (c.documents || []).filter(d => d.id !== docId);
+          await mx.saveCaseMetadata(caseId, { ...c, docReadiness: getDocReadiness(remaining) });
+        }
+      } catch (e) { console.warn(e); }
+    }
+    showToast('Document removed');
+  }, [showToast]);
+
+  const deleteCase = useCallback(async (caseId) => {
+    dispatch({ type: 'DELETE_CASE', caseId });
+    if (connectedRef.current) {
+      try { await mx.deleteCaseMetadata(caseId); } catch (e) { console.warn(e); }
+    }
+    showToast('Case deleted');
+  }, [showToast]);
+
+  const getCaseSharedUsers = useCallback(async (caseId) => {
+    if (!connectedRef.current) {
+      // Demo mode: return empty
+      return [];
+    }
+    try {
+      const members = await mx.getCaseMembers(caseId);
+      return members;
+    } catch {
+      return [];
+    }
+  }, []);
+
   const value = {
     state, dispatch, navigate, goBack, showToast,
     openCase, openTemplate,
-    doLogin, enterDemo,
+    doLogin, doRegister, enterDemo, changePassword,
     createCase, advanceStage, updateCaseVariable, updateDocStatus, updateDocOverride,
     addDocToCase, importDocToCase, updateDocContent, addComment, resolveComment, moveCaseToStage,
+    removeDocFromCase, deleteCase,
     createTemplate, saveTemplateNow, forkTemplate, deleteTemplate,
-    inviteAttorneyToCase,
+    inviteAttorneyToCase, getCaseSharedUsers,
     archiveCase, unarchiveCase, archiveTemplate, unarchiveTemplate,
     createUser, inviteUser, loadUsers,
     SCREENS,

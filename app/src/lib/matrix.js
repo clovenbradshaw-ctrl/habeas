@@ -352,6 +352,20 @@ export async function inviteToCase(caseId, userId) {
   await inviteUser(roomId, userId);
 }
 
+export async function getCaseMembers(caseId) {
+  try {
+    const roomId = await ensureCaseRoom(caseId);
+    const data = await getJoinedMembers(roomId);
+    return Object.entries(data.joined || {}).map(([userId, info]) => ({
+      userId,
+      displayName: info.display_name || userId,
+      avatarUrl: info.avatar_url || null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 // ── Session persistence ──
 
 export function saveSession(session) {
@@ -421,6 +435,54 @@ export async function listUsers() {
     avatarUrl: info.avatar_url || null,
     isAdmin: !!adminMembers[userId],
   }));
+}
+
+// ── Self-service registration (public) ──
+
+export async function selfRegister(username, password, displayName) {
+  // Uses the standard Matrix client registration endpoint
+  const res = await fetch(`${MATRIX_BASE}/_matrix/client/v3/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      auth: { type: 'm.login.dummy' },
+      username,
+      password,
+      initial_device_display_name: 'Habeas Web',
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || `Registration failed (${res.status})`);
+  }
+  _token = data.access_token;
+  _userId = data.user_id;
+  // Set display name after registration
+  if (displayName) {
+    try {
+      await mxFetch(`/_matrix/client/v3/profile/${encodeURIComponent(data.user_id)}/displayname`, {
+        method: 'PUT',
+        body: JSON.stringify({ displayname: displayName }),
+      });
+    } catch { /* display name set is best-effort */ }
+  }
+  return { userId: data.user_id, token: data.access_token };
+}
+
+// ── Password change ──
+
+export async function changePassword(oldPassword, newPassword) {
+  return mxFetch('/_matrix/client/v3/account/password', {
+    method: 'POST',
+    body: JSON.stringify({
+      auth: {
+        type: 'm.login.password',
+        identifier: { type: 'm.id.user', user: _userId },
+        password: oldPassword,
+      },
+      new_password: newPassword,
+    }),
+  });
 }
 
 export { MATRIX_BASE, STAGES, STAGE_COLORS, STAGE_CHIP_COLORS, MX_TYPES };

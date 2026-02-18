@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { AppProvider, useApp, SCREENS } from './context/AppContext';
 import LoginScreen from './screens/LoginScreen';
 import DashboardScreen from './screens/DashboardScreen';
@@ -66,7 +66,32 @@ function IconUsers() {
 }
 
 function AppShell() {
-  const { state, navigate, dispatch } = useApp();
+  const { state, navigate, dispatch, changePassword } = useApp();
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [oldPw, setOldPw] = useState('');
+  const [newPw, setNewPw] = useState('');
+  const [confirmPw, setConfirmPw] = useState('');
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwError, setPwError] = useState('');
+
+  async function handleChangePassword(e) {
+    e.preventDefault();
+    setPwError('');
+    if (!oldPw || !newPw) { setPwError('All fields are required.'); return; }
+    if (newPw.length < 8) { setPwError('New password must be at least 8 characters.'); return; }
+    if (newPw !== confirmPw) { setPwError('Passwords do not match.'); return; }
+    setPwLoading(true);
+    const ok = await changePassword(oldPw, newPw);
+    setPwLoading(false);
+    if (ok) {
+      setShowPasswordForm(false);
+      setShowUserMenu(false);
+      setOldPw(''); setNewPw(''); setConfirmPw('');
+    } else {
+      setPwError('Failed to change password. Check your current password.');
+    }
+  }
 
   if (!state.isLoggedIn) {
     return <LoginScreen />;
@@ -155,8 +180,11 @@ function AppShell() {
         </nav>
 
         {/* User footer */}
-        <div className="px-5 py-4 border-t border-white/[0.06]">
-          <div className="flex items-center gap-2.5">
+        <div className="px-5 py-4 border-t border-white/[0.06] relative">
+          <div
+            className="flex items-center gap-2.5 cursor-pointer hover:opacity-80 transition-opacity"
+            onClick={() => { setShowUserMenu(!showUserMenu); setShowPasswordForm(false); setPwError(''); }}
+          >
             <div className="w-[30px] h-[30px] rounded-full bg-purple-500 flex items-center justify-center text-white text-[0.7rem] font-semibold">
               {userInitials}
             </div>
@@ -168,13 +196,66 @@ function AppShell() {
                 {state.role === 'admin' ? 'Admin' : 'Attorney'}
               </div>
             </div>
+            <span className="text-white/30 text-xs">{showUserMenu ? '\u25BC' : '\u25B2'}</span>
           </div>
-          <button
-            onClick={() => dispatch({ type: 'LOGOUT' })}
-            className="mt-2 text-[0.7rem] text-white/35 hover:text-white/60 transition-colors"
-          >
-            Sign out
-          </button>
+
+          {showUserMenu && (
+            <div className="absolute bottom-full left-3 right-3 mb-2 bg-[#2a2a2e] border border-white/10 rounded-lg shadow-xl overflow-hidden z-50">
+              {showPasswordForm ? (
+                <form onSubmit={handleChangePassword} className="p-3 space-y-2">
+                  <div className="text-[0.72rem] font-semibold text-white/70 mb-1">Change Password</div>
+                  <input
+                    type="password"
+                    value={oldPw}
+                    onChange={(e) => setOldPw(e.target.value)}
+                    placeholder="Current password"
+                    className="w-full text-xs px-2.5 py-2 bg-white/10 border border-white/10 rounded text-white placeholder-white/30 outline-none focus:border-blue-400"
+                    autoFocus
+                  />
+                  <input
+                    type="password"
+                    value={newPw}
+                    onChange={(e) => setNewPw(e.target.value)}
+                    placeholder="New password (min 8 chars)"
+                    className="w-full text-xs px-2.5 py-2 bg-white/10 border border-white/10 rounded text-white placeholder-white/30 outline-none focus:border-blue-400"
+                  />
+                  <input
+                    type="password"
+                    value={confirmPw}
+                    onChange={(e) => setConfirmPw(e.target.value)}
+                    placeholder="Confirm new password"
+                    className="w-full text-xs px-2.5 py-2 bg-white/10 border border-white/10 rounded text-white placeholder-white/30 outline-none focus:border-blue-400"
+                  />
+                  {pwError && <p className="text-red-400 text-[0.68rem]">{pwError}</p>}
+                  <div className="flex gap-2 pt-1">
+                    <button type="button" onClick={() => { setShowPasswordForm(false); setPwError(''); }} className="flex-1 text-xs py-1.5 border border-white/10 rounded text-white/50 hover:bg-white/5">
+                      Cancel
+                    </button>
+                    <button type="submit" disabled={pwLoading} className="flex-1 text-xs py-1.5 bg-blue-500 rounded text-white font-semibold hover:bg-blue-600 disabled:opacity-50">
+                      {pwLoading ? '...' : 'Save'}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  {state.connected && (
+                    <button
+                      onClick={() => { setShowPasswordForm(true); setPwError(''); setOldPw(''); setNewPw(''); setConfirmPw(''); }}
+                      className="w-full text-left px-3 py-2.5 text-[0.75rem] text-white/60 hover:bg-white/5 hover:text-white/90 transition-colors"
+                    >
+                      Change Password
+                    </button>
+                  )}
+                  <button
+                    onClick={() => { setShowUserMenu(false); dispatch({ type: 'LOGOUT' }); }}
+                    className="w-full text-left px-3 py-2.5 text-[0.75rem] text-red-400/80 hover:bg-white/5 hover:text-red-400 transition-colors border-t border-white/5"
+                  >
+                    Sign Out
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </aside>
 
