@@ -93,11 +93,7 @@ function AppShell() {
     }
   }
 
-  if (!state.isLoggedIn) {
-    return <LoginScreen />;
-  }
-
-  // Compute badge counts
+  // Compute badge counts (must be before conditional return to preserve hook order)
   const activeCases = state.cases.filter(c => c.stage !== 'Resolved' && !c.archived);
   const needsAttention = useMemo(() => {
     return activeCases.filter(c => {
@@ -110,6 +106,10 @@ function AppShell() {
       return false;
     }).length;
   }, [activeCases]);
+
+  if (!state.isLoggedIn) {
+    return <LoginScreen />;
+  }
 
   function isNavActive(navId) {
     if (state.screen === navId) return true;
