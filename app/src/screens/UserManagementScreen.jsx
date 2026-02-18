@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 
 export default function UserManagementScreen() {
-  const { state, createUser, inviteUser, loadUsers, showToast } = useApp();
+  const { state, createUser, inviteUser, removeUser, loadUsers, showToast } = useApp();
   const [mode, setMode] = useState(null); // null, 'create', 'invite'
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -10,12 +10,15 @@ export default function UserManagementScreen() {
   const [makeAdmin, setMakeAdmin] = useState(false);
   const [search, setSearch] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(null); // userId to confirm removal
+  const [removing, setRemoving] = useState(false);
 
   useEffect(() => {
     if (state.connected) loadUsers();
   }, [state.connected, loadUsers]);
 
   const users = state.users || [];
+  const currentUserId = state.user?.userId;
 
   const filtered = useMemo(() => {
     if (!search.trim()) return users;
@@ -64,11 +67,21 @@ export default function UserManagementScreen() {
     if (result) resetForm();
   }
 
+  async function handleRemoveUser() {
+    if (!confirmRemove) return;
+    setRemoving(true);
+    await removeUser(confirmRemove);
+    setRemoving(false);
+    setConfirmRemove(null);
+  }
+
   function formatDate(ts) {
     if (!ts) return '';
     const d = new Date(ts);
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   }
+
+  const confirmUser = confirmRemove ? users.find(u => u.userId === confirmRemove) : null;
 
   if (state.role !== 'admin') {
     return (
@@ -219,44 +232,91 @@ export default function UserManagementScreen() {
 
       {/* User list */}
       <div className="flex flex-col gap-2">
-        {filtered.map((u) => (
-          <div key={u.userId} className="bg-white border border-gray-200 rounded-[14px] px-5 py-4 hover:border-gray-300 transition-all">
-            <div className="flex items-center gap-3.5">
-              {/* Avatar */}
-              <div className={`w-[38px] h-[38px] rounded-full flex items-center justify-center text-white text-[0.8rem] font-semibold flex-shrink-0 ${u.isAdmin ? 'bg-purple-500' : 'bg-blue-400'}`}>
-                {(u.displayName || u.username || '?').split(/[\s@]/).filter(Boolean).slice(0, 2).map(s => s[0]?.toUpperCase()).join('')}
-              </div>
-
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-[0.9rem] font-semibold text-gray-900">{u.displayName || u.username}</span>
-                  {u.isAdmin && (
-                    <span className="text-[0.65rem] font-semibold px-[8px] py-[2px] rounded-[10px] bg-purple-100 text-purple-600">Admin</span>
-                  )}
-                  {u.status === 'invited' && (
-                    <span className="text-[0.65rem] font-semibold px-[8px] py-[2px] rounded-[10px] bg-amber-100 text-amber-600">Invited</span>
-                  )}
+        {filtered.map((u) => {
+          const isSelf = u.userId === currentUserId;
+          return (
+            <div key={u.userId} className="bg-white border border-gray-200 rounded-[14px] px-5 py-4 hover:border-gray-300 transition-all">
+              <div className="flex items-center gap-3.5">
+                {/* Avatar */}
+                <div className={`w-[38px] h-[38px] rounded-full flex items-center justify-center text-white text-[0.8rem] font-semibold flex-shrink-0 ${u.isAdmin ? 'bg-purple-500' : 'bg-blue-400'}`}>
+                  {(u.displayName || u.username || '?').split(/[\s@]/).filter(Boolean).slice(0, 2).map(s => s[0]?.toUpperCase()).join('')}
                 </div>
-                <div className="text-[0.75rem] text-gray-400 mt-0.5">
-                  {u.email || u.userId}
-                  {u.createdAt && <> &middot; Joined {formatDate(u.createdAt)}</>}
-                </div>
-              </div>
 
-              {/* Username */}
-              <div className="text-[0.75rem] text-gray-400 font-mono flex-shrink-0">
-                {u.userId || `@${u.username}:app.aminoimmigration.com`}
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[0.9rem] font-semibold text-gray-900">{u.displayName || u.username}</span>
+                    {u.isAdmin && (
+                      <span className="text-[0.65rem] font-semibold px-[8px] py-[2px] rounded-[10px] bg-purple-100 text-purple-600">Admin</span>
+                    )}
+                    {u.status === 'invited' && (
+                      <span className="text-[0.65rem] font-semibold px-[8px] py-[2px] rounded-[10px] bg-amber-100 text-amber-600">Invited</span>
+                    )}
+                    {isSelf && (
+                      <span className="text-[0.65rem] font-semibold px-[8px] py-[2px] rounded-[10px] bg-gray-100 text-gray-500">You</span>
+                    )}
+                  </div>
+                  <div className="text-[0.75rem] text-gray-400 mt-0.5">
+                    {u.email || u.userId}
+                    {u.createdAt && <> &middot; Joined {formatDate(u.createdAt)}</>}
+                  </div>
+                </div>
+
+                {/* Username */}
+                <div className="text-[0.75rem] text-gray-400 font-mono flex-shrink-0">
+                  {u.userId || `@${u.username}:app.aminoimmigration.com`}
+                </div>
+
+                {/* Remove button - don't allow removing yourself */}
+                {!isSelf && (
+                  <button
+                    onClick={() => setConfirmRemove(u.userId)}
+                    className="text-[0.75rem] font-semibold px-3 py-1.5 rounded-md border border-red-200 text-red-500 hover:bg-red-50 hover:border-red-300 transition-colors flex-shrink-0"
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {filtered.length === 0 && (
           <div className="text-center py-12 text-gray-400">
             <p className="text-[0.82rem]">{search ? 'No users match your search.' : 'No users found.'}</p>
           </div>
         )}
       </div>
+
+      {/* Remove confirmation dialog */}
+      {confirmRemove && confirmUser && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[200]" onClick={() => setConfirmRemove(null)}>
+          <div className="bg-white rounded-xl p-6 w-[420px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-[1rem] font-bold text-gray-900 mb-2">Remove User</h3>
+            <p className="text-[0.82rem] text-gray-600 mb-1">
+              Are you sure you want to remove <strong>{confirmUser.displayName || confirmUser.username}</strong>?
+            </p>
+            <p className="text-[0.75rem] text-gray-400 mb-5">
+              This will deactivate their account. They will no longer be able to log in or access any cases.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setConfirmRemove(null)}
+                disabled={removing}
+                className="text-[0.8rem] font-semibold px-4 py-2 rounded-md border border-gray-200 text-gray-600 hover:border-gray-400 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRemoveUser}
+                disabled={removing}
+                className="text-[0.8rem] font-semibold px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+              >
+                {removing ? 'Removing...' : 'Remove User'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

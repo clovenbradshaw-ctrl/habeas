@@ -173,6 +173,8 @@ export async function whoami() {
 }
 
 export async function determineRole() {
+  // The 'admin' username is always treated as admin
+  if (_userId === '@admin:app.aminoimmigration.com') return 'admin';
   try {
     const adminId = await resolveAlias(ADMIN_ROOM_ALIAS);
     if (!adminId) return 'partner';
@@ -406,6 +408,14 @@ export async function registerUser(username, password, displayName) {
 export async function inviteUserToDataRoom(userId) {
   await ensureDataRoom();
   await inviteUser(_dataRoomId, userId);
+}
+
+export async function deactivateUser(userId) {
+  // Uses the Synapse admin API to deactivate a user account
+  return mxFetch(`/_synapse/admin/v2/users/${encodeURIComponent(userId)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ deactivated: true }),
+  });
 }
 
 export async function inviteUserToAdminRoom(userId) {
