@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useCallback } from 'react';
 import { useApp, SCREENS } from '../context/AppContext';
 import { STAGES, STAGE_COLORS } from '../lib/matrix';
 import { suggestStageAdvancement } from '../lib/seedData';
+import { parseImportedFile } from '../lib/fileImport';
 
 const STATUS_COLORS = { filed: '#3b82f6', ready: '#22c55e', review: '#a855f7', draft: '#eab308', empty: '#9ca3af' };
 const STATUS_LABELS = { filed: 'Filed', ready: 'Ready', review: 'In Review', draft: 'Draft', empty: 'Not started' };
@@ -48,7 +49,7 @@ export default function WorkspaceScreen() {
   const {
     state, dispatch, navigate, showToast,
     advanceStage, updateCaseVariable, updateDocStatus, updateDocOverride,
-    addDocToCase, addComment, resolveComment, moveCaseToStage,
+    addDocToCase, importDocToCase, updateDocContent, addComment, resolveComment, moveCaseToStage,
   } = useApp();
 
   const [rightTab, setRightTab] = useState('variables'); // 'variables' | 'review'
@@ -56,6 +57,12 @@ export default function WorkspaceScreen() {
   const [newCommentText, setNewCommentText] = useState('');
   const [newCommentSection, setNewCommentSection] = useState('');
   const [showAddDoc, setShowAddDoc] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState({});
+  const [importLoading, setImportLoading] = useState(false);
+  const [showNewVarForm, setShowNewVarForm] = useState(false);
+  const [newVarName, setNewVarName] = useState('');
+  const [newVarValue, setNewVarValue] = useState('');
+  const fileInputRef = useRef(null);
 
   const activeCase = state.cases.find(c => c.id === state.activeCaseId);
   if (!activeCase) {
@@ -172,6 +179,48 @@ export default function WorkspaceScreen() {
     showToast(`Added: ${template.name}`);
   }
 
+  async function handleFileImport(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportLoading(true);
+    try {
+      const { text, fileType } = await parseImportedFile(file);
+      const name = file.name.replace(/\.[^.]+$/, '');
+      await importDocToCase(activeCase.id, { name, content: text, fileType });
+      setShowAddDoc(false);
+      showToast(`Imported: ${file.name}`);
+      // Select the newly imported doc
+      dispatch({ type: 'SET_ACTIVE_DOC', index: docs.length });
+    } catch (err) {
+      showToast(`Import failed: ${err.message}`, true);
+    } finally {
+      setImportLoading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
+  const handleInsertVariable = useCallback((varKey, selectedText) => {
+    if (!selectedDoc?.imported || !selectedDoc.importedContent) return;
+    const content = selectedDoc.importedContent;
+    const newContent = content.replace(selectedText, `{{${varKey}}}`);
+    updateDocContent(activeCase.id, selectedDoc.id, newContent);
+    // Add the variable to case if not existing
+    if (!(varKey in variables)) {
+      handleVarChange(varKey, selectedText);
+    }
+  }, [selectedDoc, activeCase?.id, variables]);
+
+  function handleAddNewVariable() {
+    if (!newVarName.trim()) return;
+    const key = newVarName.trim().toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '');
+    if (!key) return;
+    handleVarChange(key, newVarValue);
+    setNewVarName('');
+    setNewVarValue('');
+    setShowNewVarForm(false);
+    showToast(`Variable {{${key}}} added`);
+  }
+
   const previewSections = docTemplate?.sections || [];
 
   return (
@@ -179,13 +228,20 @@ export default function WorkspaceScreen() {
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-7 py-4 flex items-center gap-3.5 flex-wrap">
         <button onClick={() => navigate(SCREENS.CASES)} className="text-[0.78rem] text-gray-400 hover:text-blue-500 cursor-pointer">
-          &larr; My Cases
+          &larr; Cases
         </button>
+        <span className="text-gray-300 text-[0.78rem]">/</span>
         <span className="text-[1.1rem] font-bold">{activeCase.petitionerName}</span>
         <span className="text-[0.7rem] font-semibold px-[9px] py-[3px] rounded-[10px] text-white" style={{ background: STAGE_COLORS[activeCase.stage] || '#9ca3af' }}>
           {activeCase.stage}
         </span>
-        <span className="text-[0.75rem] text-gray-400">
+        {selectedDoc && (
+          <>
+            <span className="text-gray-300 text-[0.78rem]">/</span>
+            <span className="text-[0.82rem] text-gray-500 font-medium">{selectedDoc.name}</span>
+          </>
+        )}
+        <span className="text-[0.75rem] text-gray-400 ml-1">
           {activeCase.circuit} &middot; {activeCase.facility}
         </span>
         <div className="flex-1" />
@@ -286,7 +342,33 @@ export default function WorkspaceScreen() {
 
           {/* Add doc dropdown */}
           {showAddDoc && (
-            <div className="mx-2 mb-2 border border-gray-200 rounded-lg bg-white shadow-lg max-h-48 overflow-y-auto">
+            <div className="mx-2 mb-2 border border-gray-200 rounded-lg bg-white shadow-lg max-h-64 overflow-y-auto">
+              {/* Import file section */}
+              <div className="px-3 py-2 border-b border-gray-200 bg-gray-50">
+                <div className="text-[0.65rem] font-bold uppercase tracking-wide text-gray-400 mb-1.5">Import File</div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.docx,.doc,.md,.markdown,.txt,.text"
+                  onChange={handleFileImport}
+                  className="hidden"
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={importLoading}
+                  className="w-full text-left px-3 py-2 text-xs bg-white border border-dashed border-gray-300 rounded-md hover:border-blue-400 hover:bg-blue-50 transition-colors flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+                  <div>
+                    <div className="font-semibold text-gray-700">{importLoading ? 'Importing...' : 'Upload document'}</div>
+                    <div className="text-gray-400 text-[0.65rem]">PDF, Word, Markdown, Text</div>
+                  </div>
+                </button>
+              </div>
+              {/* Templates section */}
+              <div className="px-3 py-1.5">
+                <div className="text-[0.65rem] font-bold uppercase tracking-wide text-gray-400 mb-1">From Template</div>
+              </div>
               {state.templates.map(t => (
                 <button key={t.id} onClick={() => handleAddDocFromTemplate(t)} className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 border-b border-gray-100 last:border-0">
                   <div className="font-semibold text-gray-800">{t.name}</div>
@@ -298,24 +380,31 @@ export default function WorkspaceScreen() {
           )}
 
           {/* Document list */}
-          {docs.map((d, i) => (
-            <div
-              key={d.id}
-              onClick={() => { dispatch({ type: 'SET_ACTIVE_DOC', index: i }); setShowExport(false); }}
-              className={`flex items-center gap-2.5 px-4 py-2.5 border-b border-gray-100 cursor-pointer transition-colors ${
-                state.activeDocIndex === i ? 'bg-blue-50' : 'hover:bg-[#f8f7f5]'
-              }`}
-            >
-              <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: STATUS_COLORS[d.status] || '#9ca3af' }} />
-              <div className="flex-1 min-w-0">
-                <div className="text-[0.78rem] font-medium text-gray-900 truncate">{d.name}</div>
-                <div className="text-[0.68rem] text-gray-400 mt-0.5">
-                  {STATUS_LABELS[d.status]}
-                  {d.status === 'review' && docComments.length > 0 && ` \u00b7 ${docComments.length} comment${docComments.length !== 1 ? 's' : ''}`}
+          {docs.map((d, i) => {
+            const isSelected = state.activeDocIndex === i;
+            return (
+              <div
+                key={d.id}
+                onClick={() => { dispatch({ type: 'SET_ACTIVE_DOC', index: i }); setShowExport(false); }}
+                className={`flex items-center gap-2.5 px-4 py-2.5 border-b border-gray-100 cursor-pointer transition-colors ${
+                  isSelected
+                    ? 'bg-blue-50 border-l-[3px] border-l-blue-500 pl-[13px]'
+                    : 'hover:bg-[#f8f7f5]'
+                }`}
+              >
+                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: STATUS_COLORS[d.status] || '#9ca3af' }} />
+                <div className="flex-1 min-w-0">
+                  <div className={`text-[0.78rem] font-medium truncate ${isSelected ? 'text-blue-900 font-semibold' : 'text-gray-900'}`}>{d.name}</div>
+                  <div className={`text-[0.68rem] mt-0.5 ${isSelected ? 'text-blue-500' : 'text-gray-400'}`}>
+                    {d.imported && <span className="text-indigo-500 mr-1">{d.fileType?.toUpperCase()}</span>}
+                    {STATUS_LABELS[d.status]}
+                    {d.status === 'review' && docComments.length > 0 && ` \u00b7 ${docComments.length} comment${docComments.length !== 1 ? 's' : ''}`}
+                  </div>
                 </div>
+                {isSelected && <span className="text-blue-400 text-[0.7rem]">&rsaquo;</span>}
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {docs.length === 0 && (
             <div className="px-4 py-6 text-center text-xs text-gray-400">
@@ -342,15 +431,47 @@ export default function WorkspaceScreen() {
         </div>
 
         {/* CENTER PANEL: Document Preview */}
-        <div className="flex-1 min-w-0 bg-[#f8f7f5] overflow-y-auto flex flex-col items-center p-6">
+        <div className="flex-1 min-w-0 bg-[#f8f7f5] overflow-y-auto flex flex-col">
+          {/* Document title bar */}
+          {selectedDoc && selectedDoc.status !== 'empty' && (
+            <div className="bg-white border-b border-gray-200 px-6 py-2.5 flex items-center gap-3 flex-shrink-0">
+              <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: STATUS_COLORS[selectedDoc.status] || '#9ca3af' }} />
+              <span className="text-[0.82rem] font-semibold text-gray-800">{selectedDoc.name}</span>
+              <span className="text-[0.68rem] font-medium px-2 py-0.5 rounded-full border" style={{
+                color: STATUS_COLORS[selectedDoc.status] || '#9ca3af',
+                borderColor: STATUS_COLORS[selectedDoc.status] || '#9ca3af',
+                background: `${STATUS_COLORS[selectedDoc.status] || '#9ca3af'}12`,
+              }}>
+                {STATUS_LABELS[selectedDoc.status]}
+              </span>
+              <span className="text-[0.7rem] text-gray-400">
+                {state.activeDocIndex + 1} of {docs.length} documents
+              </span>
+              <div className="flex-1" />
+              {selectedDoc.imported && (
+                <span className="text-[0.68rem] font-medium px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-600">
+                  {selectedDoc.fileType?.toUpperCase() || 'Imported'}
+                </span>
+              )}
+              {docTemplate && <span className="text-[0.68rem] text-gray-400">Template: {docTemplate.name}</span>}
+            </div>
+          )}
+          <div className="flex-1 flex flex-col items-center p-6">
           {!selectedDoc || selectedDoc.status === 'empty' ? (
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
-                <div className="text-sm font-semibold text-gray-600 mb-1">No template selected</div>
-                <div className="text-xs text-gray-400 mb-4">Choose a template to start this document</div>
-                <button onClick={() => setShowAddDoc(true)} className="text-xs font-semibold bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600">Browse Templates</button>
+                <div className="text-sm font-semibold text-gray-600 mb-1">No document selected</div>
+                <div className="text-xs text-gray-400 mb-4">Choose a template or import a file to start</div>
+                <button onClick={() => setShowAddDoc(true)} className="text-xs font-semibold bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600">Add Document</button>
               </div>
             </div>
+          ) : selectedDoc.imported ? (
+            <ImportedDocView
+              doc={selectedDoc}
+              variables={effectiveVars}
+              onInsertVariable={handleInsertVariable}
+              onContentChange={(content) => updateDocContent(activeCase.id, selectedDoc.id, content)}
+            />
           ) : (
             <div className="bg-white border border-gray-200 rounded-[14px] w-full max-w-[680px] px-12 py-10 shadow-sm min-h-[600px]">
               {/* Court header */}
@@ -415,6 +536,7 @@ export default function WorkspaceScreen() {
               })}
             </div>
           )}
+          </div>
         </div>
 
         {/* RIGHT PANEL: Variables or Review */}
@@ -460,58 +582,248 @@ export default function WorkspaceScreen() {
               </div>
             </>
           ) : (
-            /* Variables Panel */
+            /* Variables Panel — Edit Fields */
             <>
-              <div className="px-4 pt-3.5 pb-2.5 border-b border-gray-100 flex items-center justify-between">
-                <span className="text-[0.68rem] font-bold uppercase tracking-[0.07em] text-gray-400">Case Variables</span>
-                <span className="text-[0.7rem] text-gray-400">{filledVars.length}/{allVarKeys.length} filled</span>
+              <div className="px-4 pt-3.5 pb-1 border-b border-gray-100">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[0.72rem] font-bold text-gray-700 flex items-center gap-1.5">
+                    <svg className="w-3.5 h-3.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                    Edit Fields
+                  </span>
+                  <span className="text-[0.68rem] font-semibold text-gray-400">{filledVars.length}/{allVarKeys.length}</span>
+                </div>
+                <p className="text-[0.66rem] text-gray-400 pb-1.5">Fill in case details below. Values auto-populate into all documents.</p>
+                {/* Fill progress bar */}
+                <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden mb-1">
+                  <div
+                    className="h-full rounded-full transition-all duration-300"
+                    style={{
+                      width: allVarKeys.length > 0 ? `${(filledVars.length / allVarKeys.length) * 100}%` : '0%',
+                      background: filledVars.length === allVarKeys.length ? '#22c55e' : '#3b82f6',
+                    }}
+                  />
+                </div>
               </div>
               <div className="flex-1 overflow-y-auto">
                 {varGroups.map((g, gi) => {
                   const groupFilled = g.fields.filter(f => variables[f] && String(variables[f]).trim()).length;
                   const allFilled = groupFilled === g.fields.length;
+                  const isCollapsed = collapsedGroups[g.name];
                   return (
-                    <div key={gi} className="px-4 py-3 border-b border-gray-100">
-                      <div className="text-[0.68rem] font-bold uppercase tracking-[0.05em] text-gray-400 mb-2.5 flex items-center gap-1.5">
-                        {g.name}
+                    <div key={gi} className="border-b border-gray-100">
+                      <button
+                        onClick={() => setCollapsedGroups(prev => ({ ...prev, [g.name]: !prev[g.name] }))}
+                        className="w-full px-4 py-3 flex items-center gap-1.5 hover:bg-gray-50 transition-colors cursor-pointer"
+                      >
+                        <span className={`text-[0.62rem] text-gray-400 transition-transform ${isCollapsed ? '' : 'rotate-90'}`}>&rsaquo;</span>
+                        <span className="text-[0.68rem] font-bold uppercase tracking-[0.05em] text-gray-400">{g.name}</span>
                         <span className={`font-medium text-[0.62rem] ${allFilled ? 'text-green-500' : 'text-amber-500'}`}>
                           {groupFilled}/{g.fields.length} {allFilled ? '\u2713' : '\u26A0'}
                         </span>
-                      </div>
-                      {g.fields.map((f) => {
-                        const val = variables[f] || '';
-                        const isFilled = val && String(val).trim();
-                        const isCascade = CASCADE_FIELDS.has(f);
-                        const varType = VAR_TYPES[f] || { type: 'text', label: formatLabel(f) };
-                        return (
-                          <div key={f} className="mb-2.5">
-                            <div className="flex items-center justify-between mb-1">
-                              <label className="text-[0.7rem] font-medium text-gray-500">{varType.label}</label>
-                              {isFilled && isCascade && <span className="text-[0.68rem] text-green-500 font-semibold">{'\u2713'} auto</span>}
-                              {isFilled && !isCascade && <span className="text-[0.68rem] text-green-500 font-semibold">{'\u2713'}</span>}
-                              {!isFilled && <span className="text-[0.68rem] text-amber-500 font-semibold">empty</span>}
-                            </div>
-                            <VarInput
-                              type={varType.type}
-                              value={val}
-                              onChange={(v) => handleVarChange(f, v)}
-                              filled={!!isFilled}
-                              readOnly={isCascade}
-                              placeholder={`e.g. ${f.toLowerCase().replace(/_/g, ' ')}`}
-                            />
-                          </div>
-                        );
-                      })}
+                        {allFilled && <span className="ml-auto text-[0.6rem] text-green-500 font-medium">Complete</span>}
+                      </button>
+                      {!isCollapsed && (
+                        <div className="px-4 pb-3">
+                          {g.fields.map((f) => {
+                            const val = variables[f] || '';
+                            const isFilled = val && String(val).trim();
+                            const isCascade = CASCADE_FIELDS.has(f);
+                            const varType = VAR_TYPES[f] || { type: 'text', label: formatLabel(f) };
+                            return (
+                              <div key={f} className="mb-2.5">
+                                <div className="flex items-center justify-between mb-1">
+                                  <label className="text-[0.7rem] font-medium text-gray-500">{varType.label}</label>
+                                  {isFilled && isCascade && <span className="text-[0.68rem] text-green-500 font-semibold">{'\u2713'} auto</span>}
+                                  {isFilled && !isCascade && <span className="text-[0.68rem] text-green-500 font-semibold">{'\u2713'}</span>}
+                                  {!isFilled && <span className="text-[0.68rem] text-amber-500 font-semibold">empty</span>}
+                                </div>
+                                <VarInput
+                                  type={varType.type}
+                                  value={val}
+                                  onChange={(v) => handleVarChange(f, v)}
+                                  filled={!!isFilled}
+                                  readOnly={isCascade}
+                                  placeholder={`e.g. ${f.toLowerCase().replace(/_/g, ' ')}`}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
                 {allVarKeys.length === 0 && (
                   <div className="px-4 py-6 text-xs text-gray-400 text-center">No variables defined for this case yet.</div>
                 )}
+
+                {/* Add New Variable */}
+                <div className="px-4 py-3 border-t border-gray-200">
+                  {showNewVarForm ? (
+                    <div className="space-y-2">
+                      <div className="text-[0.68rem] font-bold text-gray-500">New Variable</div>
+                      <input
+                        value={newVarName}
+                        onChange={(e) => setNewVarName(e.target.value)}
+                        placeholder="Variable name (e.g. Bond Amount)"
+                        className="w-full text-xs px-2.5 py-[7px] border border-gray-200 rounded-md outline-none focus:border-blue-300 bg-[#f8f7f5]"
+                      />
+                      <input
+                        value={newVarValue}
+                        onChange={(e) => setNewVarValue(e.target.value)}
+                        placeholder="Initial value (optional)"
+                        className="w-full text-xs px-2.5 py-[7px] border border-gray-200 rounded-md outline-none focus:border-blue-300 bg-[#f8f7f5]"
+                      />
+                      <div className="flex gap-2">
+                        <button onClick={() => { setShowNewVarForm(false); setNewVarName(''); setNewVarValue(''); }} className="flex-1 text-xs py-1.5 border border-gray-200 rounded-md text-gray-500 hover:bg-gray-50">Cancel</button>
+                        <button onClick={handleAddNewVariable} disabled={!newVarName.trim()} className="flex-1 text-xs py-1.5 bg-blue-500 text-white rounded-md hover:bg-blue-600 font-semibold disabled:opacity-40">Add</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setShowNewVarForm(true)}
+                      className="w-full text-xs font-medium text-blue-500 py-2 border border-dashed border-blue-200 rounded-md hover:bg-blue-50 transition-colors"
+                    >
+                      + Add New Variable
+                    </button>
+                  )}
+                </div>
               </div>
             </>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ImportedDocView({ doc, variables, onInsertVariable, onContentChange }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState('');
+  const [varPopup, setVarPopup] = useState(null);
+  const [newVarKey, setNewVarKey] = useState('');
+  const contentRef = useRef(null);
+
+  const content = doc.importedContent || '';
+
+  function handleStartEdit() {
+    setEditContent(content);
+    setIsEditing(true);
+  }
+
+  function handleSaveEdit() {
+    onContentChange(editContent);
+    setIsEditing(false);
+  }
+
+  function handleTextSelect() {
+    const sel = window.getSelection();
+    const text = sel?.toString()?.trim();
+    if (!text || text.length < 2 || text.length > 100) {
+      setVarPopup(null);
+      return;
+    }
+    // Get position for popup
+    const range = sel.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    const containerRect = contentRef.current?.getBoundingClientRect();
+    if (containerRect) {
+      setVarPopup({
+        text,
+        top: rect.top - containerRect.top - 40,
+        left: rect.left - containerRect.left + rect.width / 2,
+      });
+      setNewVarKey(text.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '').slice(0, 30));
+    }
+  }
+
+  function handleMakeVariable() {
+    if (!varPopup || !newVarKey.trim()) return;
+    onInsertVariable(newVarKey.trim(), varPopup.text);
+    setVarPopup(null);
+    setNewVarKey('');
+  }
+
+  if (isEditing) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-[14px] w-full max-w-[680px] px-8 py-6 shadow-sm min-h-[600px] flex flex-col">
+        <div className="flex items-center justify-between mb-4">
+          <div className="text-sm font-semibold text-gray-700">Editing: {doc.name}</div>
+          <div className="flex gap-2">
+            <button onClick={() => setIsEditing(false)} className="text-xs px-3 py-1.5 border border-gray-200 rounded-md text-gray-500 hover:bg-gray-50">Cancel</button>
+            <button onClick={handleSaveEdit} className="text-xs px-3 py-1.5 bg-blue-500 text-white rounded-md hover:bg-blue-600 font-semibold">Save</button>
+          </div>
+        </div>
+        <p className="text-[0.68rem] text-gray-400 mb-2">Use {'{{VARIABLE_NAME}}'} syntax to insert variables that auto-fill from case fields.</p>
+        <textarea
+          value={editContent}
+          onChange={(e) => setEditContent(e.target.value)}
+          className="flex-1 w-full border border-gray-200 rounded-lg p-4 text-[0.85rem] leading-[1.8] resize-none outline-none focus:border-blue-300 font-mono"
+          style={{ minHeight: 500 }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-[14px] w-full max-w-[680px] px-12 py-10 shadow-sm min-h-[600px] relative">
+      {/* Document header */}
+      <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200">
+        <div>
+          <div className="text-[0.72rem] font-semibold text-gray-400 uppercase tracking-wide mb-1">
+            Imported {doc.fileType?.toUpperCase() || 'Document'}
+          </div>
+          <div className="text-[1rem] font-bold text-gray-800">{doc.name}</div>
+        </div>
+        <button
+          onClick={handleStartEdit}
+          className="text-xs font-semibold px-3 py-1.5 border border-gray-200 rounded-md text-gray-500 hover:border-blue-300 hover:text-blue-600 flex items-center gap-1.5"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+          Edit
+        </button>
+      </div>
+
+      {/* Tip for making variables */}
+      <div className="mb-4 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-[0.72rem] text-blue-700">
+        Select any text to convert it into a variable placeholder. Variables auto-fill across all documents.
+      </div>
+
+      {/* Document content with variable highlighting */}
+      <div
+        ref={contentRef}
+        className="relative text-[0.88rem] leading-[1.8] text-gray-900 whitespace-pre-wrap"
+        style={{ fontFamily: "'Source Serif 4', serif" }}
+        onMouseUp={handleTextSelect}
+      >
+        {renderContent(content, variables)}
+
+        {/* Variable creation popup */}
+        {varPopup && (
+          <div
+            className="absolute z-20 bg-white border border-gray-200 rounded-lg shadow-xl p-3 w-64"
+            style={{ top: varPopup.top, left: Math.max(0, varPopup.left - 128) }}
+          >
+            <div className="text-[0.7rem] font-semibold text-gray-600 mb-1.5">Make variable from selection</div>
+            <div className="text-[0.68rem] text-gray-400 mb-2 truncate">"{varPopup.text}"</div>
+            <input
+              value={newVarKey}
+              onChange={(e) => setNewVarKey(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ''))}
+              placeholder="VARIABLE_NAME"
+              className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded mb-2 font-mono outline-none focus:border-blue-300"
+            />
+            <div className="flex gap-2">
+              <button onClick={() => setVarPopup(null)} className="flex-1 text-xs px-2 py-1 border border-gray-200 rounded text-gray-500 hover:bg-gray-50">Cancel</button>
+              <button
+                onClick={handleMakeVariable}
+                disabled={!newVarKey.trim()}
+                className="flex-1 text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 font-semibold disabled:opacity-40"
+              >
+                Create {'{{'}...{'}}'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
