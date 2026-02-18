@@ -7,6 +7,7 @@ export default function TemplateEditScreen() {
   const { state, dispatch, navigate, showToast, saveTemplateNow } = useApp();
   const importSectionRef = useRef(null);
   const [importingSec, setImportingSec] = useState(false);
+  const [showOriginalPdf, setShowOriginalPdf] = useState(true);
 
   const template = state.templates.find(t => t.id === state.activeTemplateId);
   if (!template) {
@@ -19,6 +20,7 @@ export default function TemplateEditScreen() {
   }
 
   const sections = template.sections || [];
+  const hasPdfSource = template.sourceFileType === 'pdf' && !!template.sourceDataUrl;
   const selectedIdx = state.activeTemplateSection;
   const selectedSection = sections[selectedIdx] || null;
 
@@ -241,8 +243,24 @@ export default function TemplateEditScreen() {
 
         {/* Section editor */}
         <div className="flex-1 min-w-0 space-y-3">
+          {hasPdfSource && (
+            <div className="border border-blue-200 rounded-lg bg-blue-50 px-3 py-2 flex items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold text-blue-900">Original PDF preserved</p>
+                <p className="text-xs text-blue-700">Review exact layout in the native PDF viewer while editing sections.</p>
+              </div>
+              <button
+                onClick={() => setShowOriginalPdf(v => !v)}
+                className="text-xs font-semibold px-2.5 py-1 rounded border border-blue-300 text-blue-700 bg-white hover:bg-blue-100"
+              >
+                {showOriginalPdf ? 'Hide PDF' : 'Show PDF'}
+              </button>
+            </div>
+          )}
+
           {selectedSection ? (
-            <div className="border border-gray-200 rounded-lg bg-white p-4">
+            <div className={`grid gap-3 ${hasPdfSource && showOriginalPdf ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              <div className="border border-gray-200 rounded-lg bg-white p-4">
               <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
                 Section: {selectedSection.name}
               </div>
@@ -389,6 +407,21 @@ export default function TemplateEditScreen() {
                   </div>
                 </div>
               </div>
+
+              </div>
+
+              {hasPdfSource && showOriginalPdf && (
+                <div className="border border-gray-200 rounded-lg bg-white p-3 flex flex-col">
+                  <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">
+                    Original PDF preview
+                  </div>
+                  <iframe
+                    title="Original template PDF"
+                    src={`${template.sourceDataUrl}#toolbar=1&view=FitH`}
+                    className="w-full flex-1 min-h-[560px] rounded border border-gray-100"
+                  />
+                </div>
+              )}
             </div>
           ) : (
             <div className="border border-gray-200 rounded-lg bg-white p-8 text-center text-gray-400">
