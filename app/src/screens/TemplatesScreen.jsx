@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef } from 'react';
-import { useApp, SCREENS } from '../context/AppContext';
+import { useApp } from '../context/AppContext';
 import { parseImportedFile } from '../lib/fileImport';
 
 const CATEGORIES = [
@@ -22,6 +22,17 @@ export default function TemplatesScreen() {
   const [showArchived, setShowArchived] = useState(false);
   const [importing, setImporting] = useState(false);
   const importInputRef = useRef(null);
+
+  const isAdmin = state.role === 'admin';
+
+  // Cases filtered by ownership for "Use in case" modal
+  const myCases = useMemo(() => {
+    return state.cases.filter(c => {
+      if (!state.connected) return true;
+      if (isAdmin) return true;
+      return c.owner === state.user?.userId;
+    });
+  }, [state.cases, state.connected, state.user?.userId, isAdmin]);
 
   const allTemplates = state.templates;
   const templates = showArchived ? allTemplates.filter(t => t.archived) : allTemplates.filter(t => !t.archived);
@@ -306,7 +317,7 @@ export default function TemplatesScreen() {
             <h3 className="text-[0.9rem] font-semibold mb-1">Add &ldquo;{useCaseTarget.name}&rdquo; to case</h3>
             <p className="text-[0.75rem] text-gray-500 mb-3">Select a case:</p>
             <div className="space-y-2 max-h-64 overflow-y-auto">
-              {state.cases.filter(c => c.stage !== 'Resolved').map(c => (
+              {myCases.filter(c => c.stage !== 'Resolved').map(c => (
                 <button
                   key={c.id}
                   onClick={() => handleSelectCaseForTemplate(c.id)}
@@ -316,7 +327,7 @@ export default function TemplatesScreen() {
                   <div className="text-[0.72rem] text-gray-400">{c.stage} &middot; {c.circuit}</div>
                 </button>
               ))}
-              {state.cases.filter(c => c.stage !== 'Resolved').length === 0 && (
+              {myCases.filter(c => c.stage !== 'Resolved').length === 0 && (
                 <p className="text-xs text-gray-400 text-center py-4">No active cases.</p>
               )}
             </div>

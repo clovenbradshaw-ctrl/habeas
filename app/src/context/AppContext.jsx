@@ -286,7 +286,7 @@ export function AppProvider({ children }) {
         .then(async () => {
           const role = await mx.determineRole();
           dispatch({ type: 'LOGIN_SUCCESS', user: { userId: session.userId, name: session.name || session.userId }, role });
-          loadRemoteData(dispatch);
+          loadRemoteData(dispatch, role);
         })
         .catch(() => { mx.clearSession(); });
     }
@@ -340,7 +340,7 @@ export function AppProvider({ children }) {
       const role = await mx.determineRole();
       mx.saveSession({ userId, token, name: username, ts: Date.now() });
       dispatch({ type: 'LOGIN_SUCCESS', user: { userId, name: username }, role });
-      loadRemoteData(dispatch);
+      loadRemoteData(dispatch, role);
     } catch (e) {
       dispatch({ type: 'LOGIN_ERROR', error: e.message });
     }
@@ -355,7 +355,7 @@ export function AppProvider({ children }) {
       const role = await mx.determineRole();
       mx.saveSession({ userId, token, name: displayName || username, ts: Date.now() });
       dispatch({ type: 'LOGIN_SUCCESS', user: { userId, name: displayName || username }, role });
-      loadRemoteData(dispatch);
+      loadRemoteData(dispatch, role);
     } catch (e) {
       dispatch({ type: 'LOGIN_ERROR', error: e.message });
     }
@@ -807,22 +807,29 @@ export function AppProvider({ children }) {
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 
-async function loadRemoteData(dispatch) {
+async function loadRemoteData(dispatch, role) {
   try {
     dispatch({ type: 'SET_LOADING', loading: true });
     const [templates, caseMetadata, refData] = await Promise.allSettled([
       mx.loadTemplates(), mx.loadCaseMetadata(), mx.loadRefData(),
     ]);
+    // Templates and ref data are shared with all users
     if (templates.status === 'fulfilled' && templates.value.length > 0) {
       dispatch({ type: 'SET_TEMPLATES', templates: templates.value });
     }
-    if (caseMetadata.status === 'fulfilled' && caseMetadata.value.length > 0) {
-      dispatch({ type: 'SET_CASES', cases: caseMetadata.value.map(m => ({
-        ...m, documents: m.documents || [], comments: m.comments || [], variables: m.variables || {},
-      })) });
-    }
     if (refData.status === 'fulfilled') {
       dispatch({ type: 'SET_REF_DATA', refData: refData.value });
+    }
+    // Case metadata: admins see all, partners see only their own cases
+    if (caseMetadata.status === 'fulfilled' && caseMetadata.value.length > 0) {
+      const userId = mx.getUserId();
+      const isAdmin = role === 'admin';
+      const visibleCases = isAdmin
+        ? caseMetadata.value
+        : caseMetadata.value.filter(m => m.owner === userId);
+      dispatch({ type: 'SET_CASES', cases: visibleCases.map(m => ({
+        ...m, documents: m.documents || [], comments: m.comments || [], variables: m.variables || {},
+      })) });
     }
   } catch (e) {
     console.warn('Failed to load remote data:', e);

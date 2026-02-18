@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { STAGES, STAGE_COLORS } from '../lib/matrix';
 
@@ -7,8 +7,19 @@ export default function PipelineScreen() {
   const [attFilter, setAttFilter] = useState('all');
   const [dragItem, setDragItem] = useState(null);
 
+  const isAdmin = state.role === 'admin';
+
+  // Admin sees all cases; partner sees only own cases (or all in demo mode)
+  const myCases = useMemo(() => {
+    return state.cases.filter(c => {
+      if (!state.connected) return true;
+      if (isAdmin) return true;
+      return c.owner === state.user?.userId;
+    });
+  }, [state.cases, state.connected, state.user?.userId, isAdmin]);
+
   // Filter out archived cases from pipeline
-  const cases = state.cases.filter(c => !c.archived);
+  const cases = myCases.filter(c => !c.archived);
   const filteredCases = attFilter === 'all'
     ? cases
     : cases.filter(c => c.owner === attFilter);
