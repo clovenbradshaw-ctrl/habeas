@@ -14,6 +14,7 @@ const SCREENS = {
   PIPELINE: 'pipeline',
   INTAKE: 'intake',
   USERS: 'users',
+  SHARED: 'shared',
 };
 
 const initialState = {
@@ -32,6 +33,7 @@ const initialState = {
   activeDocIndex: 0,
   activeTemplateId: null,
   activeTemplateSection: 0,
+  fileShares: [],
   loading: false,
   caseLoading: false,
   toast: null,
@@ -53,8 +55,24 @@ function reducer(state, action) {
       return { ...state, user: action.user, role: action.role || 'partner', isLoggedIn: true, loginError: null, loginLoading: false, screen: SCREENS.DASHBOARD, connected: true };
     case 'LOGIN_ERROR':
       return { ...state, loginError: action.error, loginLoading: false };
-    case 'ENTER_DEMO':
-      return { ...state, isLoggedIn: true, user: { userId: '@demo:local', name: 'Demo User' }, role: 'admin', screen: SCREENS.DASHBOARD, cases: [...SEED_CASES, ...SEED_PIPELINE_EXTRA], templates: [...SEED_TEMPLATES], users: [...SEED_USERS], refData: { ...SEED_REF_DATA }, connected: false };
+    case 'ENTER_DEMO': {
+      const demoCases = [...SEED_CASES, ...SEED_PIPELINE_EXTRA];
+      const demoShares = demoCases.length > 0 && demoCases[0].documents?.length > 0 ? [{
+        id: 'share_demo_1',
+        caseId: demoCases[0].id,
+        caseName: demoCases[0].petitionerName,
+        documentIds: [demoCases[0].documents[0].id],
+        documentNames: [demoCases[0].documents[0].name],
+        sharedBy: '@partner1:local',
+        sharedByName: 'Sarah Chen',
+        sharedWith: '@demo:local',
+        sharedWithName: 'Demo User',
+        message: 'Please review the petition draft before filing.',
+        permission: 'comment',
+        createdAt: new Date(Date.now() - 86400000).toISOString(),
+      }] : [];
+      return { ...state, isLoggedIn: true, user: { userId: '@demo:local', name: 'Demo User' }, role: 'admin', screen: SCREENS.DASHBOARD, cases: demoCases, templates: [...SEED_TEMPLATES], users: [...SEED_USERS], refData: { ...SEED_REF_DATA }, fileShares: demoShares, connected: false };
+    }
     case 'LOGOUT': {
       mx.clearSession();
       return { ...initialState };
@@ -245,6 +263,12 @@ function reducer(state, action) {
       return { ...state, users: action.users };
     case 'ADD_USER':
       return { ...state, users: [...state.users, action.user] };
+    case 'SET_FILE_SHARES':
+      return { ...state, fileShares: action.shares };
+    case 'ADD_FILE_SHARE':
+      return { ...state, fileShares: [...state.fileShares, action.share] };
+    case 'REVOKE_FILE_SHARE':
+      return { ...state, fileShares: state.fileShares.filter(s => s.id !== action.shareId) };
     case 'SHOW_TOAST':
       return { ...state, toast: { message: action.message, isError: action.isError || false } };
     case 'HIDE_TOAST':
@@ -327,6 +351,21 @@ export function AppProvider({ children }) {
       const role = await mx.determineRole();
       mx.saveSession({ userId, token, name: username, ts: Date.now() });
       dispatch({ type: 'LOGIN_SUCCESS', user: { userId, name: username }, role });
+      loadRemoteData(dispatch);
+    } catch (e) {
+      dispatch({ type: 'LOGIN_ERROR', error: e.message });
+    }
+  }, []);
+
+  const doRegister = useCallback(async (username, password, displayName) => {
+    dispatch({ type: 'SET_LOGIN_LOADING', loading: true });
+    try {
+      const { userId, token } = await mx.register(username, password, displayName);
+      const role = await mx.determineRole();
+      mx.saveSession({ userId, token, name: displayName || username, ts: Date.now() });
+      dispatch({ type: 'LOGIN_SUCCESS', user: { userId, name: displayName || username }, role });
+      // Join data room so new user has access to shared data
+      try { await mx.ensureDataRoom(); } catch { /* may not exist yet */ }
       loadRemoteData(dispatch);
     } catch (e) {
       dispatch({ type: 'LOGIN_ERROR', error: e.message });
@@ -552,6 +591,62 @@ export function AppProvider({ children }) {
     catch (e) { showToast('Failed to invite: ' + e.message, true); }
   }, [showToast]);
 
+  // ── File sharing ──
+
+  const shareFiles = useCallback(async ({ caseId, documentIds, recipientUserId, recipientName, message, permission }) => {
+    const shareId = `share_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const c = stateRef.current.cases.find(x => x.id === caseId);
+    const docs = (c?.documents || []).filter(d => documentIds.includes(d.id));
+
+    const share = {
+      id: shareId,
+      caseId,
+      caseName: c?.petitionerName || 'Unknown Case',
+      documentIds,
+      documentNames: docs.map(d => d.name),
+      sharedBy: mx.getUserId() || stateRef.current.user?.userId,
+      sharedByName: stateRef.current.user?.name || 'Unknown',
+      sharedWith: recipientUserId,
+      sharedWithName: recipientName || recipientUserId,
+      message: message || '',
+      permission: permission || 'view', // 'view' or 'comment'
+      createdAt: new Date().toISOString(),
+    };
+
+    dispatch({ type: 'ADD_FILE_SHARE', share });
+
+    if (connectedRef.current) {
+      try {
+        await mx.saveFileShare(shareId, share);
+        // Invite recipient to the case room so they can access the documents
+        await mx.inviteToCase(caseId, recipientUserId);
+      } catch {
+        showToast('Shared locally (sync failed)', true);
+      }
+    }
+
+    showToast(`Files shared with ${recipientName || recipientUserId}`);
+    return shareId;
+  }, [showToast]);
+
+  const revokeFileShare = useCallback(async (shareId) => {
+    dispatch({ type: 'REVOKE_FILE_SHARE', shareId });
+    if (connectedRef.current) {
+      try { await mx.deleteFileShare(shareId); } catch (e) { console.warn(e); }
+    }
+    showToast('Share revoked');
+  }, [showToast]);
+
+  const loadFileShares = useCallback(async () => {
+    if (!connectedRef.current) return;
+    try {
+      const shares = await mx.loadFileShares();
+      dispatch({ type: 'SET_FILE_SHARES', shares });
+    } catch (e) {
+      console.warn('Failed to load file shares:', e);
+    }
+  }, []);
+
   // ── Archive operations ──
 
   const archiveCase = useCallback(async (caseId) => {
@@ -674,11 +769,12 @@ export function AppProvider({ children }) {
   const value = {
     state, dispatch, navigate, goBack, showToast,
     openCase, openTemplate,
-    doLogin, enterDemo,
+    doLogin, doRegister, enterDemo,
     createCase, advanceStage, updateCaseVariable, updateDocStatus, updateDocOverride,
     addDocToCase, addComment, resolveComment, moveCaseToStage,
     createTemplate, saveTemplateNow, forkTemplate, deleteTemplate,
     inviteAttorneyToCase,
+    shareFiles, revokeFileShare, loadFileShares,
     archiveCase, unarchiveCase, archiveTemplate, unarchiveTemplate,
     createUser, inviteUser, loadUsers,
     SCREENS,
@@ -690,8 +786,8 @@ export function AppProvider({ children }) {
 async function loadRemoteData(dispatch) {
   try {
     dispatch({ type: 'SET_LOADING', loading: true });
-    const [templates, caseMetadata, refData] = await Promise.allSettled([
-      mx.loadTemplates(), mx.loadCaseMetadata(), mx.loadRefData(),
+    const [templates, caseMetadata, refData, fileShares] = await Promise.allSettled([
+      mx.loadTemplates(), mx.loadCaseMetadata(), mx.loadRefData(), mx.loadFileShares(),
     ]);
     if (templates.status === 'fulfilled' && templates.value.length > 0) {
       dispatch({ type: 'SET_TEMPLATES', templates: templates.value });
@@ -703,6 +799,9 @@ async function loadRemoteData(dispatch) {
     }
     if (refData.status === 'fulfilled') {
       dispatch({ type: 'SET_REF_DATA', refData: refData.value });
+    }
+    if (fileShares.status === 'fulfilled' && fileShares.value.length > 0) {
+      dispatch({ type: 'SET_FILE_SHARES', shares: fileShares.value });
     }
   } catch (e) {
     console.warn('Failed to load remote data:', e);

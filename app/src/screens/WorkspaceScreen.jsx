@@ -49,6 +49,7 @@ export default function WorkspaceScreen() {
     state, dispatch, navigate, showToast,
     advanceStage, updateCaseVariable, updateDocStatus, updateDocOverride,
     addDocToCase, addComment, resolveComment, moveCaseToStage,
+    shareFiles, revokeFileShare,
   } = useApp();
 
   const [rightTab, setRightTab] = useState('variables'); // 'variables' | 'review'
@@ -56,6 +57,12 @@ export default function WorkspaceScreen() {
   const [newCommentText, setNewCommentText] = useState('');
   const [newCommentSection, setNewCommentSection] = useState('');
   const [showAddDoc, setShowAddDoc] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareRecipient, setShareRecipient] = useState('');
+  const [shareMessage, setShareMessage] = useState('');
+  const [sharePermission, setSharePermission] = useState('view');
+  const [shareDocIds, setShareDocIds] = useState([]);
+  const [shareSubmitting, setShareSubmitting] = useState(false);
 
   const activeCase = state.cases.find(c => c.id === state.activeCaseId);
   if (!activeCase) {
@@ -172,6 +179,51 @@ export default function WorkspaceScreen() {
     showToast(`Added: ${template.name}`);
   }
 
+  // File sharing
+  const caseShares = (state.fileShares || []).filter(s => s.caseId === activeCase.id);
+
+  function openShareModal() {
+    setShareDocIds(docs.map(d => d.id));
+    setShareRecipient('');
+    setShareMessage('');
+    setSharePermission('view');
+    setShowShareModal(true);
+  }
+
+  function toggleShareDoc(docId) {
+    setShareDocIds(prev =>
+      prev.includes(docId)
+        ? prev.filter(id => id !== docId)
+        : [...prev, docId]
+    );
+  }
+
+  async function handleShare() {
+    if (!shareRecipient.trim() || shareDocIds.length === 0) return;
+    setShareSubmitting(true);
+
+    // Resolve the recipient userId
+    const recipientId = shareRecipient.includes(':')
+      ? shareRecipient.trim()
+      : `@${shareRecipient.trim()}:app.aminoimmigration.com`;
+
+    // Find recipient display name from users list
+    const recipientUser = state.users.find(u => u.userId === recipientId);
+    const recipientName = recipientUser?.displayName || shareRecipient.trim();
+
+    await shareFiles({
+      caseId: activeCase.id,
+      documentIds: shareDocIds,
+      recipientUserId: recipientId,
+      recipientName,
+      message: shareMessage.trim(),
+      permission: sharePermission,
+    });
+
+    setShareSubmitting(false);
+    setShowShareModal(false);
+  }
+
   const previewSections = docTemplate?.sections || [];
 
   return (
@@ -204,6 +256,9 @@ export default function WorkspaceScreen() {
         </button>
         <button onClick={handleAdvanceStage} className="text-[0.78rem] font-semibold px-3 py-[5px] rounded-md border border-gray-200 text-gray-500 hover:border-gray-400">
           Advance Stage &rarr;
+        </button>
+        <button onClick={openShareModal} className="text-[0.78rem] font-semibold px-3 py-[5px] rounded-md border border-green-300 text-green-700 hover:bg-green-50 transition-colors">
+          Share
         </button>
         <div className="relative">
           <button onClick={() => setShowExport(!showExport)} className="bg-blue-500 text-white text-[0.78rem] font-semibold px-3 py-[5px] rounded-md hover:bg-blue-600">
@@ -513,6 +568,178 @@ export default function WorkspaceScreen() {
           )}
         </div>
       </div>
+
+      {/* Share Modal */}
+      {showShareModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowShareModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-[480px] max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-[1rem] font-bold text-gray-900">Share Files for Review</h3>
+              <p className="text-[0.75rem] text-gray-500 mt-0.5">
+                Share case documents with another user for review
+              </p>
+            </div>
+
+            <div className="px-6 py-4 space-y-4">
+              {/* Recipient */}
+              <div>
+                <label className="block text-[0.72rem] font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                  Share with (username)
+                </label>
+                <input
+                  type="text"
+                  value={shareRecipient}
+                  onChange={(e) => setShareRecipient(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  placeholder="e.g. jsmith or @jsmith:app.aminoimmigration.com"
+                  autoFocus
+                  style={{ fontFamily: 'inherit' }}
+                />
+                {state.users.length > 0 && shareRecipient && (
+                  <div className="mt-1 border border-gray-200 rounded-lg bg-white shadow-sm max-h-32 overflow-y-auto">
+                    {state.users
+                      .filter(u => {
+                        const q = shareRecipient.toLowerCase();
+                        return u.userId !== (state.user?.userId) && (
+                          (u.displayName || '').toLowerCase().includes(q) ||
+                          (u.userId || '').toLowerCase().includes(q)
+                        );
+                      })
+                      .slice(0, 5)
+                      .map(u => (
+                        <button
+                          key={u.userId}
+                          onClick={() => setShareRecipient(u.userId)}
+                          className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 border-b border-gray-100 last:border-0"
+                        >
+                          <span className="font-semibold text-gray-800">{u.displayName}</span>
+                          <span className="text-gray-400 ml-2">{u.userId}</span>
+                        </button>
+                      ))
+                    }
+                  </div>
+                )}
+              </div>
+
+              {/* Documents to share */}
+              <div>
+                <label className="block text-[0.72rem] font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  Documents to share
+                </label>
+                <div className="space-y-1.5">
+                  {docs.map(d => (
+                    <label key={d.id} className="flex items-center gap-2.5 px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={shareDocIds.includes(d.id)}
+                        onChange={() => toggleShareDoc(d.id)}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[0.78rem] font-medium text-gray-900 truncate">{d.name}</div>
+                        <div className="text-[0.68rem] text-gray-400">{STATUS_LABELS[d.status]}</div>
+                      </div>
+                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: STATUS_COLORS[d.status] || '#9ca3af' }} />
+                    </label>
+                  ))}
+                  {docs.length === 0 && (
+                    <p className="text-xs text-gray-400">No documents in this case.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Permission */}
+              <div>
+                <label className="block text-[0.72rem] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Permission
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setSharePermission('view')}
+                    className={`flex-1 text-[0.78rem] font-semibold py-2 rounded-lg border transition-colors ${
+                      sharePermission === 'view'
+                        ? 'bg-blue-50 border-blue-300 text-blue-700'
+                        : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                    }`}
+                  >
+                    View only
+                  </button>
+                  <button
+                    onClick={() => setSharePermission('comment')}
+                    className={`flex-1 text-[0.78rem] font-semibold py-2 rounded-lg border transition-colors ${
+                      sharePermission === 'comment'
+                        ? 'bg-purple-50 border-purple-300 text-purple-700'
+                        : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                    }`}
+                  >
+                    View + Comment
+                  </button>
+                </div>
+              </div>
+
+              {/* Message */}
+              <div>
+                <label className="block text-[0.72rem] font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                  Message (optional)
+                </label>
+                <textarea
+                  value={shareMessage}
+                  onChange={(e) => setShareMessage(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 resize-none"
+                  rows={2}
+                  placeholder="Add a note for the reviewer..."
+                  style={{ fontFamily: 'inherit' }}
+                />
+              </div>
+
+              {/* Active shares for this case */}
+              {caseShares.length > 0 && (
+                <div>
+                  <label className="block text-[0.72rem] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                    Active shares
+                  </label>
+                  <div className="space-y-1.5">
+                    {caseShares.map(s => (
+                      <div key={s.id} className="flex items-center gap-2.5 px-3 py-2 border border-gray-200 rounded-lg bg-gray-50">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[0.78rem] font-medium text-gray-800 truncate">
+                            {s.sharedWithName || s.sharedWith}
+                          </div>
+                          <div className="text-[0.68rem] text-gray-400">
+                            {s.documentNames?.join(', ')} &middot; {s.permission}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => revokeFileShare(s.id)}
+                          className="text-[0.68rem] font-semibold text-red-500 hover:text-red-700"
+                        >
+                          Revoke
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-2">
+              <button
+                onClick={() => setShowShareModal(false)}
+                className="text-[0.78rem] font-semibold px-4 py-2 rounded-md border border-gray-200 text-gray-500 hover:border-gray-400"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleShare}
+                disabled={shareSubmitting || !shareRecipient.trim() || shareDocIds.length === 0}
+                className="text-[0.78rem] font-semibold px-4 py-2 rounded-md bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {shareSubmitting ? 'Sharing...' : `Share ${shareDocIds.length} file${shareDocIds.length !== 1 ? 's' : ''}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -36,6 +36,8 @@ const MX_TYPES = {
   case_data: 'com.habeas.case_data',       // full case variables
   case_document: 'com.habeas.case_document', // individual document state
   case_comment: 'com.habeas.case_comment',   // review comments
+  // File sharing
+  file_share: 'com.habeas.file_share',     // file share records in shared room
 };
 
 const STAGES = [
@@ -165,6 +167,66 @@ export async function login(username, password) {
   });
   _token = data.access_token;
   _userId = data.user_id;
+  return { userId: data.user_id, token: data.access_token, deviceId: data.device_id };
+}
+
+export async function register(username, password, displayName) {
+  // Step 1: attempt registration (may return 401 with session for UIA flows)
+  const regBody = {
+    username,
+    password,
+    initial_device_display_name: 'Habeas Web',
+    auth: { type: 'm.login.dummy' },
+  };
+  const res = await fetch(`${MATRIX_BASE}/_matrix/client/v3/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(regBody),
+  });
+  const data = await res.json();
+
+  // Handle UIA flow: if 401, retry with session
+  if (res.status === 401 && data.session) {
+    const retryRes = await fetch(`${MATRIX_BASE}/_matrix/client/v3/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...regBody,
+        auth: { type: 'm.login.dummy', session: data.session },
+      }),
+    });
+    const retryData = await retryRes.json();
+    if (!retryRes.ok) throw new Error(retryData.error || `Registration failed (${retryRes.status})`);
+    _token = retryData.access_token;
+    _userId = retryData.user_id;
+
+    // Set display name if provided
+    if (displayName) {
+      try {
+        await mxFetch(`/_matrix/client/v3/profile/${encodeURIComponent(retryData.user_id)}/displayname`, {
+          method: 'PUT',
+          body: JSON.stringify({ displayname: displayName }),
+        });
+      } catch { /* non-critical */ }
+    }
+
+    return { userId: retryData.user_id, token: retryData.access_token, deviceId: retryData.device_id };
+  }
+
+  if (!res.ok) throw new Error(data.error || `Registration failed (${res.status})`);
+
+  _token = data.access_token;
+  _userId = data.user_id;
+
+  if (displayName) {
+    try {
+      await mxFetch(`/_matrix/client/v3/profile/${encodeURIComponent(data.user_id)}/displayname`, {
+        method: 'PUT',
+        body: JSON.stringify({ displayname: displayName }),
+      });
+    } catch { /* non-critical */ }
+  }
+
   return { userId: data.user_id, token: data.access_token, deviceId: data.device_id };
 }
 
@@ -350,6 +412,30 @@ export async function saveCaseComment(caseId, commentId, commentData) {
 export async function inviteToCase(caseId, userId) {
   const roomId = await ensureCaseRoom(caseId);
   await inviteUser(roomId, userId);
+}
+
+// ── File sharing ──
+
+export async function loadFileShares() {
+  await ensureDataRoom();
+  const events = await getAllState(_dataRoomId);
+  return events
+    .filter(e => e.type === MX_TYPES.file_share && e.content && !e.content._deleted)
+    .map(e => ({ id: e.state_key, ...e.content }));
+}
+
+export async function saveFileShare(shareId, shareData) {
+  await ensureDataRoom();
+  await putState(_dataRoomId, MX_TYPES.file_share, shareId, {
+    ...shareData,
+    updatedBy: _userId,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+export async function deleteFileShare(shareId) {
+  await ensureDataRoom();
+  await putState(_dataRoomId, MX_TYPES.file_share, shareId, { _deleted: true });
 }
 
 // ── Session persistence ──

@@ -9,6 +9,7 @@ import TemplateEditScreen from './screens/TemplateEditScreen';
 import PipelineScreen from './screens/PipelineScreen';
 import IntakeScreen from './screens/IntakeScreen';
 import UserManagementScreen from './screens/UserManagementScreen';
+import SharedWithMeScreen from './screens/SharedWithMeScreen';
 
 // SVG icon components for sidebar
 function IconDashboard() {
@@ -48,6 +49,14 @@ function IconAlert() {
     </svg>
   );
 }
+function IconShared() {
+  return (
+    <svg className="w-[18px] h-[18px] opacity-70 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+    </svg>
+  );
+}
 function IconUsers() {
   return (
     <svg className="w-[18px] h-[18px] opacity-70 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -66,6 +75,7 @@ function AppShell() {
 
   // Compute badge counts
   const activeCases = state.cases.filter(c => c.stage !== 'Resolved' && !c.archived);
+  const sharedWithMeCount = (state.fileShares || []).filter(s => s.sharedWith === state.user?.userId).length;
   const needsAttention = useMemo(() => {
     return activeCases.filter(c => {
       const days = c.daysInStage || 0;
@@ -120,6 +130,7 @@ function AppShell() {
           <NavItem active={isNavActive(SCREENS.DASHBOARD)} onClick={() => navigate(SCREENS.DASHBOARD)} icon={<IconDashboard />} label="Dashboard" />
           <NavItem active={isNavActive(SCREENS.CASES)} onClick={() => navigate(SCREENS.CASES)} icon={<IconCases />} label={state.role === 'admin' ? 'All Cases' : 'My Cases'} badge={activeCases.length} />
           <NavItem active={isNavActive(SCREENS.PIPELINE)} onClick={() => navigate(SCREENS.PIPELINE)} icon={<IconPipeline />} label="Pipeline" />
+          <NavItem active={isNavActive(SCREENS.SHARED)} onClick={() => navigate(SCREENS.SHARED)} icon={<IconShared />} label="Shared Files" badge={sharedWithMeCount} />
 
           {/* Library section */}
           <div className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-white/25 px-3 pt-4 pb-1.5">
@@ -185,6 +196,7 @@ function AppShell() {
             {state.screen === SCREENS.TEMPLATES && <TemplatesScreen />}
             {state.screen === SCREENS.TEMPLATE_EDIT && <TemplateEditScreen />}
             {state.screen === SCREENS.PIPELINE && <PipelineScreen />}
+            {state.screen === SCREENS.SHARED && <SharedWithMeScreen />}
             {state.screen === SCREENS.USERS && <UserManagementScreen />}
           </div>
         )}
