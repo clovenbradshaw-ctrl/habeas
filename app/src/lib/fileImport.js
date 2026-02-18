@@ -52,6 +52,15 @@ async function readAsArrayBuffer(file) {
   });
 }
 
+async function readAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
 // ── Text normalization ──
 
 /**
@@ -734,10 +743,12 @@ export async function parseImportedFile(file) {
   }
 
   let text;
+  let sourceDataUrl = null;
   switch (fileType) {
     case 'pdf': {
       const result = await extractTextFromPDF(file);
       text = result.text;
+      sourceDataUrl = await readAsDataURL(file);
       break;
     }
     case 'docx': {
@@ -754,5 +765,5 @@ export async function parseImportedFile(file) {
       throw new Error(`Unsupported file type: ${fileType}`);
   }
 
-  return { text, fileType };
+  return { text, fileType, sourceDataUrl };
 }
