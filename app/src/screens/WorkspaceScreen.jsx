@@ -4,11 +4,12 @@ import { STAGES, STAGE_COLORS } from '../lib/matrix';
 import { suggestStageAdvancement } from '../lib/seedData';
 import { parseImportedFile, extractVariables } from '../lib/fileImport';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { US_LETTER_PAGE_WIDTH_PX, US_LETTER_CONTENT_WIDTH_PX } from '../lib/pageLayout';
 
 const STATUS_COLORS = { filed: '#3b82f6', ready: '#22c55e', review: '#a855f7', draft: '#eab308', empty: '#9ca3af' };
 const STATUS_LABELS = { filed: 'Filed', ready: 'Ready', review: 'In Review', draft: 'Draft', empty: 'Not started' };
-const LEGAL_PREVIEW_WIDTH_PX = 816; // US Letter width at 96 DPI
-const LEGAL_PREVIEW_EDIT_WIDTH_PX = 760;
+const LEGAL_PREVIEW_WIDTH_PX = US_LETTER_PAGE_WIDTH_PX;
+const LEGAL_PREVIEW_EDIT_WIDTH_PX = US_LETTER_CONTENT_WIDTH_PX;
 
 const DEFAULT_SECTION_LAYOUT = {
   fontFamily: "'Source Serif 4', serif",
