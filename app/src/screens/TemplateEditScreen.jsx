@@ -28,7 +28,7 @@ export default function TemplateEditScreen() {
   const allVariables = new Set();
   sections.forEach(s => {
     if (s.content) {
-      const matches = s.content.match(/\{\{([A-Z_]+)\}\}/g);
+      const matches = s.content.match(/\{\{([A-Z_0-9]+)\}\}/g);
       if (matches) matches.forEach(m => allVariables.add(m.replace(/[{}]/g, '')));
     }
   });

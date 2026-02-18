@@ -1245,8 +1245,22 @@ function escapeHtml(text) {
 }
 
 function renderImportedBodyHtml(content, variables) {
-  const rendered = content.replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => variables[key] || `[${key}]`);
-  return `<pre style="font-family:'Times New Roman',serif;font-size:12pt;line-height:1.8;white-space:pre-wrap;margin:0;">${escapeHtml(rendered)}</pre>`;
+  const substituted = (content || '')
+    .replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => (variables[key] ?? `[${key}]`));
+
+  // Escape HTML, then convert newlines into basic document structure:
+  // - blank lines => paragraph breaks
+  // - single newlines => <br/>
+  const escaped = escapeHtml(substituted);
+
+  const paras = escaped
+    .split(/\n{2,}/)
+    .map(p => p.trim())
+    .filter(Boolean)
+    .map(p => `<p style="margin:0 0 12pt 0;">${p.replace(/\n/g, '<br/>')}</p>`)
+    .join('');
+
+  return `<div style="font-family:'Times New Roman',serif;font-size:12pt;line-height:1.8;margin:0;">${paras || '<p style="margin:0;">&nbsp;</p>'}</div>`;
 }
 
 function buildDocHtml(doc, variables, template) {
@@ -1256,11 +1270,17 @@ function buildDocHtml(doc, variables, template) {
   if (doc.imported && doc.importedContent) {
     body = renderImportedBodyHtml(doc.importedContent, variables);
   } else if (template) {
-    for (const sec of template.sections || []) {
-      if (!sec.required && sec.condition && !evaluateCondition(sec.condition, variables)) continue;
-      body += `<h2 style="text-align:center; font-size:11pt; text-transform:uppercase; letter-spacing:1px; margin-top:24pt;">${sec.name}</h2>`;
-      if (sec.content) {
-        body += `<div style="margin-bottom:12pt;">${renderImportedBodyHtml(sec.content, variables)}</div>`;
+    if (template.sourceHtml) {
+      // HTML already formatted (DOCX import) – just substitute variables safely
+      const substituted = template.sourceHtml.replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => variables[key] || `[${key}]`);
+      body = `<div style="font-family:'Times New Roman',serif;font-size:12pt;line-height:1.8;">${substituted}</div>`;
+    } else {
+      for (const sec of template.sections || []) {
+        if (!sec.required && sec.condition && !evaluateCondition(sec.condition, variables)) continue;
+        body += `<h2 style="text-align:center; font-size:11pt; text-transform:uppercase; letter-spacing:1px; margin-top:24pt;">${sec.name}</h2>`;
+        if (sec.content) {
+          body += `<div style="margin-bottom:12pt;">${renderImportedBodyHtml(sec.content, variables)}</div>`;
+        }
       }
     }
   }
