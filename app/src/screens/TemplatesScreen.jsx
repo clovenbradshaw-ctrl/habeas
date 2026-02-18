@@ -103,7 +103,11 @@ export default function TemplatesScreen() {
     setImporting(true);
     try {
       const template = await importTemplate(file);
-      const id = await createTemplate(template);
+      const id = await createTemplate({
+        ...template,
+        sourceDataUrl: template.sourceDataUrl || null,
+        sourceFileType: template.sourceFileType || null,
+      });
       showToast('Template created from imported file');
       openTemplate(id);
     } catch (err) {

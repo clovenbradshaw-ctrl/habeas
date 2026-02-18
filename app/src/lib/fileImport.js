@@ -628,6 +628,8 @@ export async function importTemplate(file, opts = {}) {
     category: opts.category || 'petition',
     desc: opts.desc || `Imported from ${file.name}`,
   };
+  let sourceDataUrl = null;
+  let sourceFileType = null;
 
   switch (fileType) {
     case 'json': {
@@ -683,6 +685,8 @@ export async function importTemplate(file, opts = {}) {
       const { text, metadata } = await extractTextFromPDF(file);
       templateMeta.name = opts.name || metadata.name || fileName;
       if (metadata.author) templateMeta.desc = opts.desc || `By ${metadata.author}`;
+      sourceDataUrl = await readAsDataURL(file);
+      sourceFileType = 'pdf';
 
       sections = detectSections(text);
       if (sections.length === 0) {
@@ -731,6 +735,8 @@ export async function importTemplate(file, opts = {}) {
     desc: templateMeta.desc,
     sections,
     variables,
+    sourceDataUrl,
+    sourceFileType,
   };
 }
 
