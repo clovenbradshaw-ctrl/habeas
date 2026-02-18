@@ -21,6 +21,8 @@ export default function TemplatesScreen() {
   const [useCaseTarget, setUseCaseTarget] = useState(null);
   const [showArchived, setShowArchived] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [pendingImportFile, setPendingImportFile] = useState(null);
+  const [importMode, setImportMode] = useState('html_semantic');
   const importInputRef = useRef(null);
 
   const isAdmin = state.role === 'admin';
@@ -97,12 +99,20 @@ export default function TemplatesScreen() {
     openCase(caseId);
   }
 
-  async function handleImportFile(e) {
+  function handleImportFile(e) {
     const file = e.target.files?.[0];
     if (!file) return;
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    if (ext === 'pdf') setImportMode('pdf_reading');
+    else setImportMode('html_semantic');
+    setPendingImportFile(file);
+  }
+
+  async function handleConfirmImport() {
+    if (!pendingImportFile) return;
     setImporting(true);
     try {
-      const template = await importTemplate(file);
+      const template = await importTemplate(pendingImportFile, {}, { renderMode: importMode });
       const id = await createTemplate({
         ...template,
         sourceDataUrl: template.sourceDataUrl || null,
@@ -110,6 +120,7 @@ export default function TemplatesScreen() {
       });
       showToast('Template created from imported file');
       openTemplate(id);
+      setPendingImportFile(null);
     } catch (err) {
       showToast(err.message || 'Failed to import file', true);
     } finally {
@@ -178,6 +189,31 @@ export default function TemplatesScreen() {
         </div>
       </div>
 
+
+      {pendingImportFile && (
+        <div className="mb-4 bg-white border border-gray-200 rounded-[12px] p-4">
+          <div className="text-[0.82rem] font-semibold text-gray-800 mb-2">Import mode for {pendingImportFile.name}</div>
+          <select
+            value={importMode}
+            onChange={(e) => setImportMode(e.target.value)}
+            className="w-full max-w-[460px] px-3 py-2 border border-gray-200 rounded-md text-[0.82rem] bg-white outline-none focus:border-blue-300"
+          >
+            {pendingImportFile.name.toLowerCase().endsWith('.docx') && (
+              <option value="html_semantic">Word (DOCX) → HTML (formatted)</option>
+            )}
+            {pendingImportFile.name.toLowerCase().endsWith('.pdf') && (
+              <option value="pdf_reading">PDF → HTML (editable, reading order)</option>
+            )}
+            {pendingImportFile.name.toLowerCase().endsWith('.pdf') && (
+              <option value="pdf_positioned">PDF → HTML (layout-preserving positioned text)</option>
+            )}
+          </select>
+          <div className="mt-3 flex gap-2">
+            <button onClick={() => setPendingImportFile(null)} className="text-xs px-3 py-1.5 border border-gray-200 rounded-md text-gray-600 hover:bg-gray-50">Cancel</button>
+            <button onClick={handleConfirmImport} disabled={importing} className="text-xs px-3 py-1.5 bg-blue-500 text-white rounded-md hover:bg-blue-600 font-semibold disabled:opacity-50">{importing ? 'Importing…' : 'Import Template'}</button>
+          </div>
+        </div>
+      )}
       {/* New template form */}
       {showNewTemplate && (
         <form onSubmit={handleCreateTemplate} className="bg-white border border-blue-200 rounded-[14px] p-5 space-y-3 mb-5">

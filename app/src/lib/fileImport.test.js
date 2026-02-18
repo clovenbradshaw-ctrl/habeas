@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectSections, extractVariables, extractTextFromMarkdown } from './fileImport';
+import { detectSections, extractVariables, extractTextFromMarkdown, stripHtmlToText } from './fileImport';
 
 // ── detectSections ──
 
@@ -415,5 +415,13 @@ I represent Petitioner and submit this verification.`;
     expect(vars).toContain('PETITIONER_COUNTRY');
     expect(vars).toContain('DETENTION_FACILITY_NAME');
     expect(vars).toContain('WARDEN_NAME');
+  });
+});
+
+
+describe('stripHtmlToText', () => {
+  it('converts simple html to plain text', () => {
+    const html = '<div><p>Hello&nbsp;{{NAME}}</p><p>Line &amp; More</p></div>';
+    expect(stripHtmlToText(html)).toBe('Hello {{NAME}}\n\nLine & More');
   });
 });

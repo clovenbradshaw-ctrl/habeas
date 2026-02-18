@@ -61,6 +61,28 @@ async function readAsDataURL(file) {
   });
 }
 
+function escapeHtml(text) {
+  return String(text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+export function stripHtmlToText(html) {
+  return (html || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p\s*>/gi, '\n\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 // ── Text normalization ──
 
 /**
@@ -397,7 +419,7 @@ export async function extractTextFromPDF(file) {
 /**
  * Extract text from DOCX with paragraph break normalization.
  */
-export async function extractTextFromDOCX(file) {
+export async function extractFromDOCX(file) {
   const mammoth = await import('mammoth');
   const buffer = await readAsArrayBuffer(file);
 
@@ -415,13 +437,76 @@ export async function extractTextFromDOCX(file) {
   // Collapse 3+ newlines to \n\n
   text = text.replace(/\n{3,}/g, '\n\n');
 
-  // Strip Word artifacts: smart quotes, em dashes
-  text = text.replace(/[\u2018\u2019]/g, "'");
-  text = text.replace(/[\u201C\u201D]/g, '"');
-  text = text.replace(/\u2014/g, '--');
-  text = text.replace(/\u2013/g, '-');
+  return { html, text };
+}
 
-  return { text, html, metadata: {} };
+export async function extractTextFromDOCX(file) {
+  const { html, text } = await extractFromDOCX(file);
+  const cleanText = text
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/\u2014/g, '--')
+    .replace(/\u2013/g, '-');
+  return { text: cleanText, html, metadata: {} };
+}
+
+export async function extractFromPDFReadingHtml(file) {
+  const pdfjsLib = await import('pdfjs-dist');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.mjs', import.meta.url).href;
+  const data = new Uint8Array(await file.arrayBuffer());
+  const pdf = await pdfjsLib.getDocument({ data }).promise;
+
+  let fullText = '';
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const tc = await page.getTextContent();
+    const pageText = tc.items.map(it => it.str).join(' ');
+    fullText += `${pageText}\n\n`;
+  }
+
+  const text = fullText.replace(/\s+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  const paras = text
+    .split(/\n{2,}/)
+    .map(s => s.trim())
+    .filter(Boolean)
+    .map(s => `<p>${escapeHtml(s)}</p>`)
+    .join('');
+
+  return { html: `<div class="pdf-reading">${paras}</div>`, text };
+}
+
+export async function extractFromPDFPositionedHtml(file, { scale = 1.5 } = {}) {
+  const pdfjsLib = await import('pdfjs-dist');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.mjs', import.meta.url).href;
+  const data = new Uint8Array(await file.arrayBuffer());
+  const pdf = await pdfjsLib.getDocument({ data }).promise;
+
+  let html = '';
+  let text = '';
+
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const viewport = page.getViewport({ scale });
+    const tc = await page.getTextContent();
+
+    const spans = tc.items.map((item, idx) => {
+      const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+      const x = tx[4];
+      const y = tx[5];
+      const fontSize = Math.hypot(tx[0], tx[1]);
+      const top = viewport.height - y;
+
+      const s = item.str || '';
+      text += `${s} `;
+
+      return `<span data-page="${pageNum}" data-idx="${idx}" style="position:absolute; left:${x}px; top:${top}px; font-size:${fontSize}px; white-space:pre;">${escapeHtml(s)}</span>`;
+    }).join('');
+
+    html += `<div class="pdf-page" data-page="${pageNum}" style="position:relative; width:${viewport.width}px; height:${viewport.height}px;">${spans}</div>`;
+    text += '\n\n';
+  }
+
+  return { html: `<div class="pdf-positioned">${html}</div>`, text: text.trim() };
 }
 
 /**
@@ -621,7 +706,8 @@ function detectMarkdownSections(text) {
  * @param {object} opts - Optional overrides: { name, category, desc }
  * @returns {Promise<object>} - Template object with sections and variables
  */
-export async function importTemplate(file, opts = {}) {
+export async function importTemplate(file, templateMeta = {}, opts = {}) {
+  const meta = { ...(templateMeta || {}), ...(opts || {}) };
   const fileType = getFileType(file);
   if (!fileType) {
     throw new Error(`Unsupported file type: ${file.name}. Supported: PDF, DOCX, JSON, MD, TXT`);
@@ -629,10 +715,11 @@ export async function importTemplate(file, opts = {}) {
 
   const fileName = file.name.replace(/\.[^.]+$/, '');
   let sections = [];
-  let templateMeta = {
-    name: opts.name || fileName,
-    category: opts.category || 'petition',
-    desc: opts.desc || `Imported from ${file.name}`,
+  const renderMode = meta.renderMode || null;
+  let resolvedTemplateMeta = {
+    name: meta.name || fileName,
+    category: meta.category || 'petition',
+    desc: meta.desc || `Imported from ${file.name}`,
   };
   let sourceDataUrl = null;
   let sourceFileType = null;
@@ -642,21 +729,24 @@ export async function importTemplate(file, opts = {}) {
       const result = await parseTemplateJSON(file);
       if (result.type === 'native') {
         // Native JSON template: use sections directly
-        templateMeta.name = opts.name || result.template.name;
-        templateMeta.category = opts.category || result.template.category;
-        templateMeta.desc = opts.desc || result.template.desc || templateMeta.desc;
+        resolvedTemplateMeta.name = meta.name || result.template.name;
+        resolvedTemplateMeta.category = meta.category || result.template.category;
+        resolvedTemplateMeta.desc = meta.desc || result.template.desc || resolvedTemplateMeta.desc;
         return {
-          name: templateMeta.name,
-          category: templateMeta.category,
-          desc: templateMeta.desc,
+          name: resolvedTemplateMeta.name,
+          category: resolvedTemplateMeta.category,
+          desc: resolvedTemplateMeta.desc,
           sections: result.template.sections,
           variables: result.template.variables,
+          sourceHtml: null,
+          sourceText: result.template.sections.map(s => s.content).join('\n\n'),
+          renderMode: 'html_semantic',
         };
       }
       // Flat JSON: run section detection on the content
-      templateMeta.name = opts.name || result.metadata.name;
-      templateMeta.category = opts.category || result.metadata.category;
-      templateMeta.desc = opts.desc || result.metadata.desc || templateMeta.desc;
+      resolvedTemplateMeta.name = meta.name || result.metadata.name;
+      resolvedTemplateMeta.category = meta.category || result.metadata.category;
+      resolvedTemplateMeta.desc = meta.desc || result.metadata.desc || resolvedTemplateMeta.desc;
       sections = detectSections(result.text);
       if (sections.length === 0) {
         console.warn('No headings detected in JSON content, falling back to chunking');
@@ -668,9 +758,9 @@ export async function importTemplate(file, opts = {}) {
     case 'md': {
       const raw = await readAsText(file);
       const { text, metadata } = extractTextFromMarkdown(raw);
-      templateMeta.name = opts.name || metadata.name || fileName;
-      templateMeta.category = opts.category || metadata.category || 'petition';
-      templateMeta.desc = opts.desc || metadata.desc || templateMeta.desc;
+      resolvedTemplateMeta.name = meta.name || metadata.name || fileName;
+      resolvedTemplateMeta.category = meta.category || metadata.category || 'petition';
+      resolvedTemplateMeta.desc = meta.desc || metadata.desc || resolvedTemplateMeta.desc;
 
       // Try Markdown headings first
       const mdSections = detectMarkdownSections(text);
@@ -688,26 +778,35 @@ export async function importTemplate(file, opts = {}) {
     }
 
     case 'pdf': {
-      const { text, metadata } = await extractTextFromPDF(file);
-      templateMeta.name = opts.name || metadata.name || fileName;
-      if (metadata.author) templateMeta.desc = opts.desc || `By ${metadata.author}`;
+      const { metadata } = await extractTextFromPDF(file);
+      resolvedTemplateMeta.name = meta.name || metadata.name || fileName;
+      if (metadata.author) resolvedTemplateMeta.desc = meta.desc || `By ${metadata.author}`;
       sourceDataUrl = await readAsDataURL(file);
       sourceFileType = 'pdf';
 
-      sections = detectSections(text);
-      if (sections.length === 0) {
-        console.warn('No headings detected in PDF, falling back to chunking');
-        sections = chunkText(text);
+      if (renderMode === 'pdf_positioned') {
+        const { html, text } = await extractFromPDFPositionedHtml(file);
+        resolvedTemplateMeta.sourceHtml = html;
+        resolvedTemplateMeta.sourceText = text;
+        resolvedTemplateMeta.renderMode = 'pdf_positioned';
+      } else {
+        const { html, text } = await extractFromPDFReadingHtml(file);
+        resolvedTemplateMeta.sourceHtml = html;
+        resolvedTemplateMeta.sourceText = text;
+        resolvedTemplateMeta.renderMode = 'pdf_reading';
       }
+
+      sections = detectSections(resolvedTemplateMeta.sourceText);
+      if (sections.length === 0) sections = chunkText(resolvedTemplateMeta.sourceText);
       break;
     }
 
     case 'docx': {
-      const { text, html } = await extractTextFromDOCX(file);
-      if (html) {
-        templateMeta.sourceHtml = html;
-        sourceFileType = 'docx';
-      }
+      const { html, text } = await extractFromDOCX(file);
+      resolvedTemplateMeta.sourceHtml = html;
+      resolvedTemplateMeta.sourceText = text;
+      resolvedTemplateMeta.renderMode = 'html_semantic';
+      sourceFileType = 'docx';
       sections = detectSections(text);
       if (sections.length === 0) {
         console.warn('No headings detected in DOCX, falling back to chunking');
@@ -736,18 +835,22 @@ export async function importTemplate(file, opts = {}) {
   }
 
   // Extract variables from all section content
-  const allContent = sections.map(s => s.content).join('\n\n');
-  const variables = extractVariables(allContent);
+  const variableSource = resolvedTemplateMeta.sourceText
+    || stripHtmlToText(resolvedTemplateMeta.sourceHtml || '')
+    || sections.map(s => s.content).join('\n\n');
+  const variables = extractVariables(variableSource);
 
   return {
-    name: templateMeta.name,
-    category: templateMeta.category,
-    desc: templateMeta.desc,
+    name: resolvedTemplateMeta.name,
+    category: resolvedTemplateMeta.category,
+    desc: resolvedTemplateMeta.desc,
     sections,
     variables,
+    sourceHtml: resolvedTemplateMeta.sourceHtml || null,
+    sourceText: resolvedTemplateMeta.sourceText || null,
+    renderMode: resolvedTemplateMeta.renderMode || 'html_semantic',
     sourceDataUrl,
     sourceFileType,
-    sourceHtml: templateMeta.sourceHtml || null,
   };
 }
 
