@@ -256,6 +256,8 @@ function reducer(state, action) {
       return { ...state, users: action.users };
     case 'ADD_USER':
       return { ...state, users: [...state.users, action.user] };
+    case 'REMOVE_USER':
+      return { ...state, users: state.users.filter(u => u.userId !== action.userId) };
     case 'SHOW_TOAST':
       return { ...state, toast: { message: action.message, isError: action.isError || false } };
     case 'HIDE_TOAST':
@@ -728,6 +730,20 @@ export function AppProvider({ children }) {
     return userId;
   }, [showToast]);
 
+  const removeUser = useCallback(async (userId) => {
+    if (connectedRef.current) {
+      try {
+        await mx.deactivateUser(userId);
+      } catch (e) {
+        showToast('Failed to remove user: ' + e.message, true);
+        return false;
+      }
+    }
+    dispatch({ type: 'REMOVE_USER', userId });
+    showToast('User removed');
+    return true;
+  }, [showToast]);
+
   const loadUsers = useCallback(async () => {
     if (!connectedRef.current) return;
     try {
@@ -784,7 +800,7 @@ export function AppProvider({ children }) {
     createTemplate, saveTemplateNow, forkTemplate, deleteTemplate,
     inviteAttorneyToCase, getCaseSharedUsers,
     archiveCase, unarchiveCase, archiveTemplate, unarchiveTemplate,
-    createUser, inviteUser, loadUsers,
+    createUser, inviteUser, removeUser, loadUsers,
     SCREENS,
   };
 
