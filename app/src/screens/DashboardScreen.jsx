@@ -5,7 +5,14 @@ import { STAGE_COLORS } from '../lib/matrix';
 export default function DashboardScreen() {
   const { state, navigate, openCase } = useApp();
 
-  const activeCases = useMemo(() => state.cases.filter(c => c.stage !== 'Resolved'), [state.cases]);
+  // Admin sees all cases; partners see only own (in connected mode)
+  const allCases = useMemo(() => {
+    if (!state.connected) return state.cases;
+    if (state.role === 'admin') return state.cases;
+    return state.cases.filter(c => c.owner === state.user?.userId);
+  }, [state.cases, state.connected, state.role, state.user?.userId]);
+
+  const activeCases = useMemo(() => allCases.filter(c => c.stage !== 'Resolved' && !c.archived), [allCases]);
 
   // Compute stats
   const stats = useMemo(() => {

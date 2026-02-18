@@ -1018,6 +1018,38 @@ export const SEED_PIPELINE_EXTRA = [
   },
 ];
 
+// ── Seed users (for demo mode user management) ──
+
+export const SEED_USERS = [
+  {
+    userId: '@katie:app.aminoimmigration.com',
+    username: 'katie',
+    displayName: 'Katie Soltis',
+    email: 'katie@aminoimmigration.com',
+    isAdmin: true,
+    status: 'active',
+    createdAt: '2024-06-01T00:00:00Z',
+  },
+  {
+    userId: '@david:app.aminoimmigration.com',
+    username: 'david',
+    displayName: 'David Brooks',
+    email: 'david@aminoimmigration.com',
+    isAdmin: false,
+    status: 'active',
+    createdAt: '2024-07-15T00:00:00Z',
+  },
+  {
+    userId: '@lisa:app.aminoimmigration.com',
+    username: 'lisa',
+    displayName: 'Lisa Chen',
+    email: 'lisa@aminoimmigration.com',
+    isAdmin: false,
+    status: 'active',
+    createdAt: '2024-08-01T00:00:00Z',
+  },
+];
+
 // ── Aggregate all seed ref data for demo mode ──
 
 export const SEED_REF_DATA = {

@@ -11,19 +11,29 @@ const STAGE_FILTERS = [
 ];
 
 export default function CasesScreen() {
-  const { state, navigate, openCase } = useApp();
+  const { state, navigate, openCase, archiveCase, unarchiveCase } = useApp();
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState('all');
+  const [showArchived, setShowArchived] = useState(false);
 
-  // Filter to user's cases (or show all in demo)
+  const isAdmin = state.role === 'admin';
+
+  // Admin sees all cases; partner sees only own cases (or all in demo mode)
   const myCases = useMemo(() => {
     return state.cases.filter(c => {
       if (!state.connected) return true;
+      if (isAdmin) return true;
       return c.owner === state.user?.userId;
     });
-  }, [state.cases, state.connected, state.user?.userId]);
+  }, [state.cases, state.connected, state.user?.userId, isAdmin]);
 
-  const activeCases = useMemo(() => myCases.filter(c => c.stage !== 'Resolved'), [myCases]);
+  const activeCases = useMemo(() => {
+    return myCases.filter(c => {
+      if (c.stage === 'Resolved') return false;
+      if (showArchived) return c.archived;
+      return !c.archived;
+    });
+  }, [myCases, showArchived]);
 
   // Apply search
   const searched = useMemo(() => {
@@ -33,7 +43,8 @@ export default function CasesScreen() {
       (c.petitionerName || '').toLowerCase().includes(q) ||
       (c.facility || '').toLowerCase().includes(q) ||
       (c.circuit || '').toLowerCase().includes(q) ||
-      (c.variables?.A_NUMBER || '').toLowerCase().includes(q)
+      (c.variables?.A_NUMBER || '').toLowerCase().includes(q) ||
+      (c.owner || '').toLowerCase().includes(q)
     );
   }, [activeCases, search]);
 
@@ -46,6 +57,7 @@ export default function CasesScreen() {
   }, [searched, stageFilter]);
 
   const reviewCount = activeCases.filter(c => c.stage === 'Attorney Review').length;
+  const archivedCount = myCases.filter(c => c.archived && c.stage !== 'Resolved').length;
 
   function getDocReadiness(c) {
     const docs = c.documents || [];
@@ -94,22 +106,61 @@ export default function CasesScreen() {
     return 'Review case status';
   }
 
+  function getOwnerDisplay(c) {
+    if (!c.owner) return '';
+    // Try to find a matching user
+    const user = (state.users || []).find(u => u.userId === c.owner);
+    if (user) return user.displayName || user.username;
+    // Extract username from Matrix ID
+    const match = c.owner.match(/^@(.+?):/);
+    return match ? match[1] : c.owner;
+  }
+
+  function handleArchive(e, caseId) {
+    e.stopPropagation();
+    archiveCase(caseId);
+  }
+
+  function handleUnarchive(e, caseId) {
+    e.stopPropagation();
+    unarchiveCase(caseId);
+  }
+
   return (
     <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h2 className="text-[1.2rem] font-bold text-gray-900">My Cases</h2>
+          <h2 className="text-[1.2rem] font-bold text-gray-900">
+            {isAdmin ? 'All Cases' : 'My Cases'}
+          </h2>
           <p className="text-[0.82rem] text-gray-500 mt-0.5">
-            {activeCases.length} active case{activeCases.length !== 1 ? 's' : ''} &middot; {reviewCount} awaiting review
+            {showArchived
+              ? `${archivedCount} archived case${archivedCount !== 1 ? 's' : ''}`
+              : `${activeCases.length} active case${activeCases.length !== 1 ? 's' : ''} \u00b7 ${reviewCount} awaiting review`
+            }
           </p>
         </div>
-        <button
-          onClick={() => navigate(SCREENS.INTAKE)}
-          className="inline-flex items-center gap-1.5 bg-blue-500 text-white text-[0.8rem] font-semibold px-4 py-2 rounded-md hover:bg-blue-600 transition-colors"
-        >
-          + New Case
-        </button>
+        <div className="flex gap-2">
+          {archivedCount > 0 && (
+            <button
+              onClick={() => setShowArchived(!showArchived)}
+              className={`inline-flex items-center gap-1.5 text-[0.8rem] font-semibold px-4 py-2 rounded-md border transition-colors ${
+                showArchived
+                  ? 'bg-gray-100 border-gray-300 text-gray-700'
+                  : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+              }`}
+            >
+              {showArchived ? 'Show Active' : `Archived (${archivedCount})`}
+            </button>
+          )}
+          <button
+            onClick={() => navigate(SCREENS.INTAKE)}
+            className="inline-flex items-center gap-1.5 bg-blue-500 text-white text-[0.8rem] font-semibold px-4 py-2 rounded-md hover:bg-blue-600 transition-colors"
+          >
+            + New Case
+          </button>
+        </div>
       </div>
 
       {/* Toolbar: search + filters */}
@@ -120,7 +171,7 @@ export default function CasesScreen() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search cases by name, facility, or A-number\u2026"
+            placeholder={isAdmin ? 'Search cases by name, facility, owner\u2026' : 'Search cases by name, facility, or A-number\u2026'}
             className="w-full py-2 px-3 pl-[34px] border border-gray-200 rounded-md text-[0.8rem] bg-white outline-none focus:border-blue-300 transition-colors"
             style={{ fontFamily: 'inherit' }}
           />
@@ -144,7 +195,9 @@ export default function CasesScreen() {
       {/* Case cards */}
       {filtered.length === 0 && (
         <div className="text-center py-12 text-gray-400">
-          <p className="text-[0.82rem]">{search ? 'No cases match your search.' : 'No cases yet. Create one to get started.'}</p>
+          <p className="text-[0.82rem]">
+            {search ? 'No cases match your search.' : showArchived ? 'No archived cases.' : 'No cases yet. Create one to get started.'}
+          </p>
         </div>
       )}
 
@@ -157,7 +210,9 @@ export default function CasesScreen() {
             <div
               key={c.id}
               onClick={() => openCase(c.id)}
-              className="bg-white border border-gray-200 rounded-[14px] px-5 py-[18px] cursor-pointer hover:border-blue-300 hover:shadow-sm transition-all flex items-start gap-4"
+              className={`bg-white border rounded-[14px] px-5 py-[18px] cursor-pointer hover:border-blue-300 hover:shadow-sm transition-all flex items-start gap-4 ${
+                c.archived ? 'border-gray-100 opacity-75' : 'border-gray-200'
+              }`}
             >
               {/* Stage color bar */}
               <div className="w-1 self-stretch rounded-sm flex-shrink-0" style={{ background: stageColor, minHeight: 56 }} />
@@ -170,15 +225,41 @@ export default function CasesScreen() {
                     <div className="text-[0.95rem] font-semibold text-gray-900">{c.petitionerName}</div>
                     <div className="text-[0.75rem] text-gray-400 mt-0.5">
                       {c.facility}{c.facilityLocation ? ` \u2014 ${c.facilityLocation}` : ''} &middot; {c.circuit}
+                      {isAdmin && c.owner && (
+                        <> &middot; <span className="text-purple-400">{getOwnerDisplay(c)}</span></>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {c.archived && (
+                      <span className="text-[0.68rem] font-semibold px-[9px] py-[3px] rounded-[10px] bg-gray-100 text-gray-500">
+                        Archived
+                      </span>
+                    )}
                     <span className={`text-[0.68rem] font-semibold px-[9px] py-[3px] rounded-[10px] ${getDaysColor(days)}`}>
                       {days}d
                     </span>
                     <span className="text-[0.68rem] font-semibold px-[9px] py-[3px] rounded-[10px] text-white" style={{ background: stageColor }}>
                       {c.stage}
                     </span>
+                    {/* Archive/Unarchive button */}
+                    {showArchived ? (
+                      <button
+                        onClick={(e) => handleUnarchive(e, c.id)}
+                        className="text-[0.68rem] font-semibold px-[9px] py-[3px] rounded-[10px] bg-blue-50 text-blue-500 hover:bg-blue-100 transition-colors"
+                        title="Unarchive case"
+                      >
+                        Restore
+                      </button>
+                    ) : (
+                      <button
+                        onClick={(e) => handleArchive(e, c.id)}
+                        className="text-[0.68rem] font-semibold px-[9px] py-[3px] rounded-[10px] bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                        title="Archive case"
+                      >
+                        Archive
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -198,10 +279,12 @@ export default function CasesScreen() {
                 )}
 
                 {/* Next action */}
-                <div className="mt-2.5 px-3 py-2 bg-blue-50 border border-blue-200 rounded-md flex items-center gap-2">
-                  <span className="text-[0.62rem] font-bold uppercase tracking-[0.06em] text-blue-500">Next &rarr;</span>
-                  <span className="text-[0.75rem] text-blue-800">{getNextAction(c)}</span>
-                </div>
+                {!c.archived && (
+                  <div className="mt-2.5 px-3 py-2 bg-blue-50 border border-blue-200 rounded-md flex items-center gap-2">
+                    <span className="text-[0.62rem] font-bold uppercase tracking-[0.06em] text-blue-500">Next &rarr;</span>
+                    <span className="text-[0.75rem] text-blue-800">{getNextAction(c)}</span>
+                  </div>
+                )}
               </div>
             </div>
           );

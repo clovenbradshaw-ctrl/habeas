@@ -10,7 +10,7 @@ const CATEGORIES = [
 ];
 
 export default function TemplatesScreen() {
-  const { state, openTemplate, openCase, showToast, createTemplate, forkTemplate, deleteTemplate, addDocToCase } = useApp();
+  const { state, openTemplate, openCase, showToast, createTemplate, forkTemplate, deleteTemplate, archiveTemplate, unarchiveTemplate, addDocToCase } = useApp();
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [search, setSearch] = useState('');
   const [showNewTemplate, setShowNewTemplate] = useState(false);
@@ -18,8 +18,11 @@ export default function TemplatesScreen() {
   const [newTplCategory, setNewTplCategory] = useState('petition');
   const [newTplDesc, setNewTplDesc] = useState('');
   const [useCaseTarget, setUseCaseTarget] = useState(null);
+  const [showArchived, setShowArchived] = useState(false);
 
-  const templates = state.templates;
+  const allTemplates = state.templates;
+  const templates = showArchived ? allTemplates.filter(t => t.archived) : allTemplates.filter(t => !t.archived);
+  const archivedCount = allTemplates.filter(t => t.archived).length;
 
   // Search + category filter
   const filtered = useMemo(() => {
@@ -97,14 +100,33 @@ export default function TemplatesScreen() {
       <div className="flex items-center justify-between mb-5">
         <div>
           <h2 className="text-[1.2rem] font-bold text-gray-900">Template Library</h2>
-          <p className="text-[0.82rem] text-gray-500 mt-0.5">Shared document templates for the team</p>
+          <p className="text-[0.82rem] text-gray-500 mt-0.5">
+            {showArchived
+              ? `${archivedCount} archived template${archivedCount !== 1 ? 's' : ''}`
+              : 'Shared document templates for the team'
+            }
+          </p>
         </div>
-        <button
-          onClick={() => setShowNewTemplate(true)}
-          className="inline-flex items-center gap-1.5 bg-blue-500 text-white text-[0.8rem] font-semibold px-4 py-2 rounded-md hover:bg-blue-600 transition-colors"
-        >
-          + New Template
-        </button>
+        <div className="flex gap-2">
+          {archivedCount > 0 && (
+            <button
+              onClick={() => setShowArchived(!showArchived)}
+              className={`inline-flex items-center gap-1.5 text-[0.8rem] font-semibold px-4 py-2 rounded-md border transition-colors ${
+                showArchived
+                  ? 'bg-gray-100 border-gray-300 text-gray-700'
+                  : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+              }`}
+            >
+              {showArchived ? 'Show Active' : `Archived (${archivedCount})`}
+            </button>
+          )}
+          <button
+            onClick={() => setShowNewTemplate(true)}
+            className="inline-flex items-center gap-1.5 bg-blue-500 text-white text-[0.8rem] font-semibold px-4 py-2 rounded-md hover:bg-blue-600 transition-colors"
+          >
+            + New Template
+          </button>
+        </div>
       </div>
 
       {/* New template form */}
@@ -236,30 +258,47 @@ export default function TemplatesScreen() {
                 </div>
               </div>
               <div className="flex gap-1.5 ml-4 flex-shrink-0">
-                <button
-                  onClick={() => openTemplate(t.id)}
-                  className="text-[0.75rem] font-semibold px-3 py-[5px] rounded-md border border-gray-200 text-gray-500 hover:border-gray-400"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => handleForkTemplate(t)}
-                  className="text-[0.75rem] font-semibold px-3 py-[5px] rounded-md border border-gray-200 text-gray-500 hover:border-gray-400"
-                >
-                  Fork
-                </button>
-                <button
-                  onClick={() => handleDeleteTemplate(t.id)}
-                  className="text-[0.75rem] font-semibold px-3 py-[5px] rounded-md border border-gray-200 text-gray-500 hover:border-gray-400"
-                >
-                  Delete
-                </button>
-                <button
-                  onClick={() => setUseCaseTarget(t)}
-                  className="text-[0.75rem] font-semibold px-3 py-[5px] rounded-md bg-blue-500 text-white hover:bg-blue-600"
-                >
-                  Use in case
-                </button>
+                {showArchived ? (
+                  <button
+                    onClick={() => unarchiveTemplate(t.id)}
+                    className="text-[0.75rem] font-semibold px-3 py-[5px] rounded-md bg-blue-500 text-white hover:bg-blue-600"
+                  >
+                    Restore
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => openTemplate(t.id)}
+                      className="text-[0.75rem] font-semibold px-3 py-[5px] rounded-md border border-gray-200 text-gray-500 hover:border-gray-400"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleForkTemplate(t)}
+                      className="text-[0.75rem] font-semibold px-3 py-[5px] rounded-md border border-gray-200 text-gray-500 hover:border-gray-400"
+                    >
+                      Fork
+                    </button>
+                    <button
+                      onClick={() => archiveTemplate(t.id)}
+                      className="text-[0.75rem] font-semibold px-3 py-[5px] rounded-md border border-gray-200 text-gray-500 hover:border-gray-400"
+                    >
+                      Archive
+                    </button>
+                    <button
+                      onClick={() => handleDeleteTemplate(t.id)}
+                      className="text-[0.75rem] font-semibold px-3 py-[5px] rounded-md border border-gray-200 text-gray-500 hover:border-gray-400"
+                    >
+                      Delete
+                    </button>
+                    <button
+                      onClick={() => setUseCaseTarget(t)}
+                      className="text-[0.75rem] font-semibold px-3 py-[5px] rounded-md bg-blue-500 text-white hover:bg-blue-600"
+                    >
+                      Use in case
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>
