@@ -3,6 +3,30 @@ import { useApp, SCREENS } from '../context/AppContext';
 import { parseImportedFile } from '../lib/fileImport';
 import { VARIABLE_GROUPS } from '../lib/seedData';
 
+const FONT_OPTIONS = [
+  { label: 'Source Serif 4', value: "'Source Serif 4', serif" },
+  { label: 'Times New Roman', value: "'Times New Roman', serif" },
+  { label: 'Georgia', value: 'Georgia, serif' },
+  { label: 'Arial', value: 'Arial, sans-serif' },
+  { label: 'Inter', value: 'Inter, sans-serif' },
+];
+
+const ALIGNMENT_OPTIONS = [
+  { label: 'Left', value: 'left' },
+  { label: 'Center', value: 'center' },
+  { label: 'Right', value: 'right' },
+  { label: 'Justify', value: 'justify' },
+];
+
+const DEFAULT_LAYOUT = {
+  fontFamily: "'Source Serif 4', serif",
+  fontSize: 14,
+  lineHeight: 1.7,
+  paragraphSpacing: 12,
+  textAlign: 'justify',
+  sectionTitleAlign: 'center',
+};
+
 export default function TemplateEditScreen() {
   const { state, dispatch, navigate, showToast, saveTemplateNow } = useApp();
   const importSectionRef = useRef(null);
@@ -23,6 +47,27 @@ export default function TemplateEditScreen() {
   const hasPdfSource = template.sourceFileType === 'pdf' && !!template.sourceDataUrl;
   const selectedIdx = state.activeTemplateSection;
   const selectedSection = sections[selectedIdx] || null;
+
+
+  const selectedSectionLayout = {
+    ...DEFAULT_LAYOUT,
+    ...(selectedSection?.layout || {}),
+  };
+
+  function handleSectionLayoutChange(key, value) {
+    if (!selectedSection) return;
+    dispatch({
+      type: 'UPDATE_TEMPLATE_SECTION',
+      templateId: template.id,
+      sectionIndex: selectedIdx,
+      data: {
+        layout: {
+          ...(selectedSection.layout || {}),
+          [key]: value,
+        },
+      },
+    });
+  }
 
   // Collect all variables used across all sections
   const allVariables = new Set();
@@ -71,6 +116,7 @@ export default function TemplateEditScreen() {
       required: true,
       paraCount: 1,
       content: '',
+      layout: { ...DEFAULT_LAYOUT },
     };
     dispatch({ type: 'ADD_TEMPLATE_SECTION', templateId: template.id, section: newSection });
     dispatch({ type: 'SET_ACTIVE_TEMPLATE_SECTION', index: sections.length });
@@ -133,6 +179,7 @@ export default function TemplateEditScreen() {
           required: true,
           paraCount: text.split(/\n{2,}/).length,
           content: text,
+          layout: { ...DEFAULT_LAYOUT },
         };
         dispatch({ type: 'ADD_TEMPLATE_SECTION', templateId: template.id, section: newSection });
         dispatch({ type: 'SET_ACTIVE_TEMPLATE_SECTION', index: sections.length });
@@ -316,6 +363,85 @@ export default function TemplateEditScreen() {
                   </div>
                 )}
 
+
+                <div className="border border-gray-200 rounded-lg bg-gray-50/70 p-3">
+                  <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Section layout</div>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-500 block mb-1">Body font</label>
+                      <select
+                        value={selectedSectionLayout.fontFamily}
+                        onChange={(e) => handleSectionLayoutChange('fontFamily', e.target.value)}
+                        className="w-full text-xs px-2 py-1.5 rounded border border-gray-200 bg-white"
+                      >
+                        {FONT_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-500 block mb-1">Text alignment</label>
+                      <select
+                        value={selectedSectionLayout.textAlign}
+                        onChange={(e) => handleSectionLayoutChange('textAlign', e.target.value)}
+                        className="w-full text-xs px-2 py-1.5 rounded border border-gray-200 bg-white"
+                      >
+                        {ALIGNMENT_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-500 block mb-1">Section title alignment</label>
+                      <select
+                        value={selectedSectionLayout.sectionTitleAlign}
+                        onChange={(e) => handleSectionLayoutChange('sectionTitleAlign', e.target.value)}
+                        className="w-full text-xs px-2 py-1.5 rounded border border-gray-200 bg-white"
+                      >
+                        {ALIGNMENT_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-500 block mb-1">Font size: {selectedSectionLayout.fontSize}px</label>
+                      <input
+                        type="range"
+                        min="11"
+                        max="20"
+                        step="1"
+                        value={selectedSectionLayout.fontSize}
+                        onChange={(e) => handleSectionLayoutChange('fontSize', Number(e.target.value))}
+                        className="w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-500 block mb-1">Line height: {selectedSectionLayout.lineHeight.toFixed(1)}</label>
+                      <input
+                        type="range"
+                        min="1"
+                        max="2.5"
+                        step="0.1"
+                        value={selectedSectionLayout.lineHeight}
+                        onChange={(e) => handleSectionLayoutChange('lineHeight', Number(e.target.value))}
+                        className="w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-500 block mb-1">Paragraph spacing: {selectedSectionLayout.paragraphSpacing}px</label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="32"
+                        step="1"
+                        value={selectedSectionLayout.paragraphSpacing}
+                        onChange={(e) => handleSectionLayoutChange('paragraphSpacing', Number(e.target.value))}
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 <div>
                   <label className="text-xs font-bold text-gray-500 block mb-1">
                     Content <span className="font-normal text-gray-400">— use {"{{VARIABLE_NAME}}"} for merge fields</span>
@@ -401,7 +527,12 @@ export default function TemplateEditScreen() {
                       value={selectedSection.content || ''}
                       onChange={(e) => handleSectionContentChange(e.target.value)}
                       className="w-full p-3 min-h-48 text-sm text-gray-700 leading-relaxed resize-y border-none focus:outline-none"
-                      style={{ fontFamily: "'Source Serif 4', serif" }}
+                      style={{
+                        fontFamily: selectedSectionLayout.fontFamily,
+                        fontSize: `${selectedSectionLayout.fontSize}px`,
+                        lineHeight: selectedSectionLayout.lineHeight,
+                        textAlign: selectedSectionLayout.textAlign,
+                      }}
                       placeholder="Enter the legal prose for this section. Use {{VARIABLE_NAME}} for merge fields."
                     />
                   </div>
