@@ -51,16 +51,13 @@ const CASCADE_FIELDS = new Set([
 export default function WorkspaceScreen() {
   const {
     state, dispatch, navigate, showToast,
-    advanceStage, updateCaseVariable, updateDocStatus,
-    addDocToCase, importDocToCase, updateDocContent, addComment, resolveComment, moveCaseToStage,
+    advanceStage, updateCaseVariable,
+    addDocToCase, importDocToCase, updateDocContent, moveCaseToStage,
     mergeCaseVariables,
     removeDocFromCase, inviteAttorneyToCase, getCaseSharedUsers,
   } = useApp();
 
-  const [rightTab, setRightTab] = useState('variables'); // 'variables' | 'review'
   const [showExport, setShowExport] = useState(false);
-  const [newCommentText, setNewCommentText] = useState('');
-  const [newCommentSection, setNewCommentSection] = useState('');
   const [showAddDoc, setShowAddDoc] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState({});
   const [importLoading, setImportLoading] = useState(false);
@@ -159,8 +156,8 @@ export default function WorkspaceScreen() {
   const missingRequiredVars = requiredVarsForSelectedDoc.filter(k => !effectiveVars[k] || !String(effectiveVars[k]).trim());
 
   // Variable groups
-  const varGroups = useMemo(() => groupVariables(variables), [variables]);
-  const allVarKeys = Object.keys(variables);
+  const allVarKeys = Array.from(new Set([...Object.keys(variables), ...requiredVarsForSelectedDoc])).sort();
+  const varGroups = groupVariables(allVarKeys);
   const filledVars = allVarKeys.filter(k => variables[k] && String(variables[k]).trim());
 
   // Checklist items
@@ -198,50 +195,14 @@ export default function WorkspaceScreen() {
   }
 
 
-  async function handleDocStatusChange(docId, newStatus) {
-    await updateDocStatus(activeCase.id, docId, newStatus);
-  }
 
   async function handleVarChange(key, value) {
     await updateCaseVariable(activeCase.id, key, value);
   }
 
-  async function handleAddComment() {
-    if (!newCommentText.trim()) return;
-    const comment = {
-      id: `cmt_${Date.now()}`,
-      documentId: selectedDoc?.id,
-      section: newCommentSection || 'General',
-      author: state.user?.name || 'Unknown',
-      text: newCommentText.trim(),
-      status: 'open',
-      createdAt: Date.now(),
-    };
-    await addComment(activeCase.id, comment);
-    setNewCommentText('');
-    setNewCommentSection('');
-    showToast('Comment added');
-  }
 
-  async function handleResolveComment(commentId) {
-    await resolveComment(activeCase.id, commentId);
-  }
 
-  async function handleApproveDoc() {
-    if (!selectedDoc) return;
-    await handleDocStatusChange(selectedDoc.id, 'ready');
-    for (const c of docComments) {
-      await handleResolveComment(c.id);
-    }
-    showToast('Document approved');
-  }
 
-  async function handleRequestChanges() {
-    if (selectedDoc && selectedDoc.status !== 'review') {
-      await handleDocStatusChange(selectedDoc.id, 'review');
-      showToast('Changes requested');
-    }
-  }
 
   async function handleAddDocFromTemplate(template) {
     await addDocToCase(activeCase.id, template);
@@ -339,17 +300,6 @@ export default function WorkspaceScreen() {
         <div className="flex-1" />
         {state.caseLoading && <span className="text-xs text-gray-400">Loading...</span>}
 
-        {/* Right tab toggle for review */}
-        <button
-          onClick={() => setRightTab(rightTab === 'review' ? 'variables' : 'review')}
-          className={`text-[0.78rem] font-semibold px-3 py-[5px] rounded-md border transition-colors ${
-            rightTab === 'review'
-              ? 'bg-purple-50 border-purple-300 text-purple-700'
-              : 'border-gray-200 text-gray-500 hover:border-purple-300'
-          }`}
-        >
-          {rightTab === 'review' ? 'Variables' : 'Review Mode'}
-        </button>
         <button onClick={handleAdvanceStage} className="text-[0.78rem] font-semibold px-3 py-[5px] rounded-md border border-gray-200 text-gray-500 hover:border-gray-400">
           Advance Stage &rarr;
         </button>
@@ -663,7 +613,6 @@ export default function WorkspaceScreen() {
                 Missing {missingRequiredVars.length} field{missingRequiredVars.length !== 1 ? 's' : ''} used in this document.
               </span>
               <button
-                onClick={() => setRightTab('variables')}
                 className="text-[0.7rem] font-semibold px-2.5 py-1 rounded border border-amber-300 text-amber-700 hover:bg-amber-100"
               >
                 Fill fields
@@ -708,7 +657,7 @@ export default function WorkspaceScreen() {
                   <VarSpan vars={effectiveVars} varKey="PETITIONER_NAME" />,<br />
                   &nbsp;&nbsp;&nbsp;&nbsp;Petitioner,<br /><br />
                   v.<br /><br />
-                  <VarSpan vars={effectiveVars} varKey="WARDEN_NAME" fallback="Warden" />,<br />
+                  <VarSpan vars={effectiveVars} varKey="WARDEN_NAME" />,<br />
                   &nbsp;&nbsp;&nbsp;&nbsp;Respondent.
                 </div>
                 <div className="text-right text-[0.82rem]">
@@ -727,7 +676,7 @@ export default function WorkspaceScreen() {
                   if (!evaluateCondition(sec.condition, effectiveVars)) return null;
                 }
                 const sectionComments = docComments.filter(c => c.section === sec.name);
-                const isAnnotated = rightTab === 'review' && sectionComments.length > 0;
+                const isAnnotated = sectionComments.length > 0;
                 return (
                   <div key={i} className={`mb-5 relative ${isAnnotated ? 'border-l-[3px] border-purple-500 pl-3 -ml-3.5' : ''}`}>
                     {isAnnotated && (
@@ -768,51 +717,8 @@ export default function WorkspaceScreen() {
           onCancel={() => setConfirmRemoveDoc(null)}
         />
 
-        {/* RIGHT PANEL: Variables or Review */}
+        {/* RIGHT PANEL: Variables */}
         <div className="w-[300px] min-w-[300px] border-l border-gray-200 bg-white flex flex-col overflow-y-auto">
-          {rightTab === 'review' ? (
-            /* Review Panel */
-            <>
-              <div className="px-4 pt-3.5 pb-2.5 border-b border-gray-100 flex items-center justify-between">
-                <span className="text-[0.68rem] font-bold uppercase tracking-[0.07em] text-gray-400">Review Comments</span>
-                <span className="text-[0.7rem] text-gray-400">{docComments.length} open</span>
-              </div>
-              <div className="flex-1 overflow-y-auto p-3 space-y-3">
-                {docComments.map((c) => (
-                  <div key={c.id} className="bg-purple-50 border border-purple-200 rounded-lg p-2.5">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[0.7rem] font-semibold text-purple-700">{c.section}</span>
-                      <span className="text-[0.62rem] font-semibold px-[7px] py-0.5 rounded-lg bg-purple-100 text-purple-600">{c.status}</span>
-                    </div>
-                    <div className="text-[0.78rem] text-gray-600 leading-relaxed">{c.text}</div>
-                    <div className="flex items-center justify-between mt-1.5">
-                      <span className="text-[0.68rem] text-gray-400">{c.author}</span>
-                      {c.status === 'open' && (
-                        <button onClick={() => handleResolveComment(c.id)} className="text-[0.68rem] text-green-600 font-semibold hover:underline cursor-pointer">Resolve</button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {docComments.length === 0 && <p className="text-xs text-gray-400 text-center py-6">No comments on this document.</p>}
-                {/* Add comment form */}
-                <div className="border-t border-gray-200 pt-3 space-y-2">
-                  <select value={newCommentSection} onChange={(e) => setNewCommentSection(e.target.value)} className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded" style={{ fontFamily: 'inherit' }}>
-                    <option value="">Section...</option>
-                    {(docTemplate?.sections || []).map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                    <option value="General">General</option>
-                  </select>
-                  <textarea value={newCommentText} onChange={(e) => setNewCommentText(e.target.value)} placeholder="Add a comment..." className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded resize-none" rows={3} style={{ fontFamily: 'inherit' }} />
-                  <button onClick={handleAddComment} disabled={!newCommentText.trim()} className="w-full text-xs font-semibold border border-purple-300 text-purple-600 rounded-md py-2 hover:bg-purple-50 disabled:opacity-40">+ Add comment</button>
-                </div>
-                <div className="border-t border-gray-200 pt-2 flex gap-2">
-                  <button onClick={handleApproveDoc} className="flex-1 text-xs font-bold bg-green-600 text-white rounded-md py-2 hover:bg-green-700">Approve</button>
-                  <button onClick={handleRequestChanges} className="flex-1 text-xs font-bold border border-orange-300 text-orange-600 rounded-md py-2 hover:bg-orange-50">Changes</button>
-                </div>
-              </div>
-            </>
-          ) : (
-            /* Variables Panel — Edit Fields */
-            <>
               <div className="px-4 pt-3.5 pb-1 border-b border-gray-100">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[0.72rem] font-bold text-gray-700 flex items-center gap-1.5">
@@ -934,8 +840,6 @@ export default function WorkspaceScreen() {
                   )}
                 </div>
               </div>
-            </>
-          )}
         </div>
       </div>
     </div>
@@ -1141,7 +1045,7 @@ function VarInput({ type, value, onChange, filled, readOnly, placeholder }) {
   );
 }
 
-function VarSpan({ vars, varKey, fallback }) {
+function VarSpan({ vars, varKey }) {
   const val = vars[varKey];
   if (val && String(val).trim()) {
     return (
@@ -1157,9 +1061,8 @@ function VarSpan({ vars, varKey, fallback }) {
   );
 }
 
-function groupVariables(vars) {
+function groupVariables(keys) {
   const groups = [];
-  const keys = Object.keys(vars);
   const petitioner = keys.filter(k => k.startsWith('PETITIONER') || ['ENTRY_DATE', 'YEARS_RESIDENCE', 'APPREHENSION_LOCATION', 'APPREHENSION_DATE', 'CRIMINAL_HISTORY', 'COMMUNITY_TIES'].includes(k));
   const detention = keys.filter(k => k.startsWith('DETENTION') || k.startsWith('FACILITY') || k.startsWith('WARDEN'));
   const court = keys.filter(k => k.startsWith('DISTRICT') || k.startsWith('DIVISION') || k.startsWith('COURT') || k.startsWith('CASE_') || k.startsWith('JUDGE') || k.startsWith('FILING'));
