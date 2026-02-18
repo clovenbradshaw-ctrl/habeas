@@ -198,8 +198,14 @@ export default function TemplatesScreen() {
             onChange={(e) => setImportMode(e.target.value)}
             className="w-full max-w-[460px] px-3 py-2 border border-gray-200 rounded-md text-[0.82rem] bg-white outline-none focus:border-blue-300"
           >
-            {pendingImportFile.name.toLowerCase().endsWith('.docx') && (
+            {(pendingImportFile.name.toLowerCase().endsWith('.docx') || pendingImportFile.name.toLowerCase().endsWith('.doc')) && (
               <option value="html_semantic">Word (DOCX) → HTML (formatted)</option>
+            )}
+            {pendingImportFile.name.toLowerCase().endsWith('.md') && (
+              <option value="html_semantic">Markdown (MD) → HTML (formatted)</option>
+            )}
+            {pendingImportFile.name.toLowerCase().endsWith('.markdown') && (
+              <option value="html_semantic">Markdown (MD) → HTML (formatted)</option>
             )}
             {pendingImportFile.name.toLowerCase().endsWith('.pdf') && (
               <option value="pdf_reading">PDF → HTML (editable, reading order)</option>

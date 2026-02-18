@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectSections, extractVariables, extractTextFromMarkdown, stripHtmlToText } from './fileImport';
+import { detectSections, extractVariables, extractTextFromMarkdown, extractFromMarkdown, stripHtmlToText } from './fileImport';
 
 // ── detectSections ──
 
@@ -298,6 +298,36 @@ Some text here.`;
     const { text, metadata } = extractTextFromMarkdown(content);
     expect(metadata).toEqual({});
     expect(text).toContain('# Introduction');
+  });
+});
+
+
+
+describe('extractFromMarkdown', () => {
+  it('produces sourceHtml that preserves markdown formatting constructs', async () => {
+    const content = `---
+name: test_template
+---
+
+# INTRODUCTION
+
+This is **bold** and _italic_.
+
+- First point
+- Second point
+
+1. Step one
+2. Step two`;
+
+    const { html, text, metadata } = await extractFromMarkdown(content);
+
+    expect(metadata.name).toBe('test_template');
+    expect(text).toContain('This is bold and italic.');
+    expect(html).toContain('<h1>INTRODUCTION</h1>');
+    expect(html).toContain('<strong>bold</strong>');
+    expect(html).toContain('<em>italic</em>');
+    expect(html).toContain('<ul>');
+    expect(html).toContain('<ol>');
   });
 });
 

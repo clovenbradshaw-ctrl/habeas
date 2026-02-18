@@ -510,9 +510,9 @@ export async function extractFromPDFPositionedHtml(file, { scale = 1.5 } = {}) {
 }
 
 /**
- * Extract text from Markdown, stripping frontmatter and formatting.
+ * Extract markdown body + frontmatter metadata without changing markdown formatting.
  */
-export function extractTextFromMarkdown(fileContent) {
+function stripMarkdownFrontmatter(fileContent) {
   let text = fileContent;
   const metadata = {};
 
@@ -535,27 +535,143 @@ export function extractTextFromMarkdown(fileContent) {
     }
   }
 
+  return { text: text.trim(), metadata };
+}
+
+export function extractTextFromMarkdown(fileContent) {
+  const { text, metadata } = stripMarkdownFrontmatter(fileContent);
+
+  let normalizedText = text;
+
   // Strip Markdown formatting but preserve {{VARIABLE}} patterns.
   // Protect variable patterns by replacing them with placeholders first.
   const varPlaceholders = [];
-  text = text.replace(/\{\{[A-Z_0-9]+\}\}/g, (match) => {
+  normalizedText = normalizedText.replace(/\{\{[A-Z_0-9]+\}\}/g, (match) => {
     varPlaceholders.push(match);
-    return `\x00VAR${varPlaceholders.length - 1}\x00`;
+    return `@@VARPLACEHOLDER${varPlaceholders.length - 1}@@`;
   });
 
   // Bold: **text** or __text__
-  text = text.replace(/\*\*(.+?)\*\*/g, '$1');
-  text = text.replace(/__(.+?)__/g, '$1');
+  normalizedText = normalizedText.replace(/\*\*(.+?)\*\*/g, '$1');
+  normalizedText = normalizedText.replace(/__(.+?)__/g, '$1');
   // Italic: *text* or _text_
-  text = text.replace(/(?<!\w)\*([^*]+?)\*(?!\w)/g, '$1');
-  text = text.replace(/(?<!\w)_([^_]+?)_(?!\w)/g, '$1');
+  normalizedText = normalizedText.replace(/(?<!\w)\*([^*]+?)\*(?!\w)/g, '$1');
+  normalizedText = normalizedText.replace(/(?<!\w)_([^_]+?)_(?!\w)/g, '$1');
   // Blockquotes: > text
-  text = text.replace(/^>\s?/gm, '');
+  normalizedText = normalizedText.replace(/^>\s?/gm, '');
 
   // Restore variable patterns
-  text = text.replace(/\x00VAR(\d+)\x00/g, (_, idx) => varPlaceholders[parseInt(idx)]);
+  normalizedText = normalizedText.replace(/@@VARPLACEHOLDER(\d+)@@/g, (_, idx) => varPlaceholders[Number.parseInt(idx, 10)]);
 
-  return { text: text.trim(), metadata };
+  return { text: normalizedText.trim(), metadata };
+}
+
+function markdownToHtml(markdown) {
+  const lines = markdown.split(/\r?\n/);
+  const html = [];
+  let inUl = false;
+  let inOl = false;
+  let inBlockquote = false;
+
+  function closeListsAndQuote() {
+    if (inUl) {
+      html.push('</ul>');
+      inUl = false;
+    }
+    if (inOl) {
+      html.push('</ol>');
+      inOl = false;
+    }
+    if (inBlockquote) {
+      html.push('</blockquote>');
+      inBlockquote = false;
+    }
+  }
+
+  function formatInline(raw) {
+    let out = escapeHtml(raw);
+    out = out.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    out = out.replace(/__(.+?)__/g, '<strong>$1</strong>');
+    out = out.replace(/(?<!\w)\*([^*]+?)\*(?!\w)/g, '<em>$1</em>');
+    out = out.replace(/(?<!\w)_([^_]+?)_(?!\w)/g, '<em>$1</em>');
+    out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+    return out;
+  }
+
+  for (const rawLine of lines) {
+    const line = rawLine || '';
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      closeListsAndQuote();
+      continue;
+    }
+
+    const heading = trimmed.match(/^(#{1,6})\s+(.+)$/);
+    if (heading) {
+      closeListsAndQuote();
+      const level = heading[1].length;
+      html.push(`<h${level}>${formatInline(heading[2])}</h${level}>`);
+      continue;
+    }
+
+    const bq = trimmed.match(/^>\s?(.*)$/);
+    if (bq) {
+      if (!inBlockquote) {
+        closeListsAndQuote();
+        html.push('<blockquote>');
+        inBlockquote = true;
+      }
+      html.push(`<p>${formatInline(bq[1])}</p>`);
+      continue;
+    }
+
+    const ul = trimmed.match(/^[-*+]\s+(.+)$/);
+    if (ul) {
+      if (!inUl) {
+        if (inOl) {
+          html.push('</ol>');
+          inOl = false;
+        }
+        html.push('<ul>');
+        inUl = true;
+      }
+      html.push(`<li>${formatInline(ul[1])}</li>`);
+      continue;
+    }
+
+    const ol = trimmed.match(/^\d+[.)]\s+(.+)$/);
+    if (ol) {
+      if (!inOl) {
+        if (inUl) {
+          html.push('</ul>');
+          inUl = false;
+        }
+        html.push('<ol>');
+        inOl = true;
+      }
+      html.push(`<li>${formatInline(ol[1])}</li>`);
+      continue;
+    }
+
+    closeListsAndQuote();
+    html.push(`<p>${formatInline(trimmed)}</p>`);
+  }
+
+  closeListsAndQuote();
+  return html.join('');
+}
+
+export async function extractFromMarkdown(fileContent) {
+  const { text: markdownBody, metadata } = stripMarkdownFrontmatter(fileContent);
+  const html = markdownToHtml(markdownBody);
+  const { text } = extractTextFromMarkdown(fileContent);
+
+  return {
+    html: `<div class="markdown-import">${html}</div>`,
+    text,
+    metadata,
+  };
 }
 
 /**
@@ -757,10 +873,14 @@ export async function importTemplate(file, templateMeta = {}, opts = {}) {
 
     case 'md': {
       const raw = await readAsText(file);
-      const { text, metadata } = extractTextFromMarkdown(raw);
+      const { html, text, metadata } = await extractFromMarkdown(raw);
       resolvedTemplateMeta.name = meta.name || metadata.name || fileName;
       resolvedTemplateMeta.category = meta.category || metadata.category || 'petition';
       resolvedTemplateMeta.desc = meta.desc || metadata.desc || resolvedTemplateMeta.desc;
+      resolvedTemplateMeta.sourceHtml = html;
+      resolvedTemplateMeta.sourceText = text;
+      resolvedTemplateMeta.renderMode = 'html_semantic';
+      sourceFileType = 'md';
 
       // Try Markdown headings first
       const mdSections = detectMarkdownSections(text);
