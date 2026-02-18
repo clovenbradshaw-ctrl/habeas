@@ -87,8 +87,20 @@ const FACILITY_DEFAULTS = {
   fieldOfficeId: '',
 };
 
+const WARDEN_DEFAULTS = {
+  name: '',
+  title: 'Warden',
+  facilityId: '',
+  effectiveDate: new Date().toISOString().slice(0, 10),
+  predecessor: null,
+};
+
 function makeFacilityId() {
   return `fac_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function makeWardenId() {
+  return `w_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 }
 
 export default function VariablesReferenceScreen() {
@@ -101,6 +113,7 @@ export default function VariablesReferenceScreen() {
   const [drafts, setDrafts] = useState({});
 
   const facilities = state.refData?.facility || [];
+  const wardens = state.refData?.warden || [];
 
   const totalVars = VARIABLE_GROUPS.reduce((sum, g) => sum + g.variables.length, 0);
   const autoVars = Object.values(VAR_META).filter(m => m.auto).length;
@@ -126,6 +139,16 @@ export default function VariablesReferenceScreen() {
       return [f.name, f.location, f.operator, f.id].some(value => (value || '').toLowerCase().includes(q));
     });
   }, [facilities, optionSearch]);
+
+  const filteredWardens = useMemo(() => {
+    if (!optionSearch.trim()) return wardens;
+    const q = optionSearch.toLowerCase();
+    return wardens.filter(w => {
+      const facility = facilities.find(f => f.id === w.facilityId);
+      return [w.name, w.title, w.facilityId, w.effectiveDate, facility?.name, w.id]
+        .some(value => (value || '').toLowerCase().includes(q));
+    });
+  }, [wardens, facilities, optionSearch]);
 
   function toggleGroup(name) {
     setExpandedGroups(prev => {
@@ -221,9 +244,82 @@ export default function VariablesReferenceScreen() {
     showToast('Facility option deleted');
   }
 
+  async function saveWarden(id) {
+    const draft = drafts[id];
+    if (!draft?.name?.trim()) {
+      showToast('Warden name is required', true);
+      return;
+    }
+    if (!draft?.facilityId?.trim()) {
+      showToast('Warden facility ID is required', true);
+      return;
+    }
+    await upsertRefRecord('warden', {
+      ...WARDEN_DEFAULTS,
+      ...draft,
+      id,
+      name: draft.name.trim(),
+      title: (draft.title || 'Warden').trim(),
+      facilityId: draft.facilityId.trim(),
+      effectiveDate: draft.effectiveDate || new Date().toISOString().slice(0, 10),
+      predecessor: draft.predecessor || null,
+    });
+    setEditingId(null);
+    showToast('Warden option saved');
+  }
+
+  function startWardenEdit(id) {
+    setEditingId(id);
+    const existing = wardens.find(w => w.id === id);
+    if (existing) {
+      setDrafts(prev => ({
+        ...prev,
+        [id]: {
+          ...WARDEN_DEFAULTS,
+          ...existing,
+        },
+      }));
+    }
+  }
+
+  function addWarden() {
+    const id = makeWardenId();
+    setDrafts(prev => ({
+      ...prev,
+      [id]: {
+        id,
+        ...WARDEN_DEFAULTS,
+      },
+    }));
+    setEditingId(id);
+  }
+
+  async function removeWarden(id) {
+    if (!confirm('Delete this warden option?')) return;
+    await deleteRefRecord('warden', id);
+    setDrafts(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    if (editingId === id) setEditingId(null);
+    showToast('Warden option deleted');
+  }
+
+  const wardenRows = useMemo(() => {
+    const existingIds = new Set(wardens.map(w => w.id));
+    const unsavedRows = Object.values(drafts).filter(row => row.id && !existingIds.has(row.id) && row.id.startsWith('w_'));
+    return [
+      ...filteredWardens,
+      ...unsavedRows.filter(row =>
+        !optionSearch.trim() || [row.name, row.title, row.facilityId].some(v => (v || '').toLowerCase().includes(optionSearch.toLowerCase()))
+      ),
+    ];
+  }, [wardens, drafts, filteredWardens, optionSearch]);
+
   const facilityRows = useMemo(() => {
     const existingIds = new Set(facilities.map(f => f.id));
-    const unsavedRows = Object.values(drafts).filter(row => row.id && !existingIds.has(row.id));
+    const unsavedRows = Object.values(drafts).filter(row => row.id && !existingIds.has(row.id) && row.id.startsWith('fac_'));
     return [...filteredFacilities, ...unsavedRows.filter(row => (row.name || '').toLowerCase().includes(optionSearch.toLowerCase()) || !optionSearch.trim())];
   }, [facilities, drafts, filteredFacilities, optionSearch]);
 
@@ -474,6 +570,113 @@ export default function VariablesReferenceScreen() {
           {facilityRows.length === 0 && (
             <div className="text-center py-8 text-[0.85rem] text-gray-400">
               No detention centers matching "{optionSearch}"
+            </div>
+          )}
+
+          <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h3 className="text-[0.9rem] font-semibold text-gray-800">Warden option table</h3>
+              <p className="text-[0.75rem] text-gray-500 mt-0.5">
+                Maintain WARDEN_NAME and WARDEN_TITLE records linked to facilities.
+              </p>
+            </div>
+            <button
+              onClick={addWarden}
+              className="text-[0.75rem] font-semibold px-2.5 py-1.5 rounded-md border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100"
+            >
+              + Add warden
+            </button>
+          </div>
+
+          <div className="grid grid-cols-[190px_170px_170px_140px_120px_150px] gap-3 px-4 py-2 bg-gray-50/60 border-b border-gray-100">
+            <span className="text-[0.68rem] font-bold uppercase tracking-[0.06em] text-gray-400">Warden Name</span>
+            <span className="text-[0.68rem] font-bold uppercase tracking-[0.06em] text-gray-400">Title</span>
+            <span className="text-[0.68rem] font-bold uppercase tracking-[0.06em] text-gray-400">Facility ID</span>
+            <span className="text-[0.68rem] font-bold uppercase tracking-[0.06em] text-gray-400">Effective Date</span>
+            <span className="text-[0.68rem] font-bold uppercase tracking-[0.06em] text-gray-400">Predecessor</span>
+            <span className="text-[0.68rem] font-bold uppercase tracking-[0.06em] text-gray-400">Actions</span>
+          </div>
+
+          {wardenRows.map((warden) => {
+            const id = warden.id;
+            const row = drafts[id] || { ...WARDEN_DEFAULTS, ...warden };
+            const editing = editingId === id;
+
+            return (
+              <div key={id} className="grid grid-cols-[190px_170px_170px_140px_120px_150px] gap-3 px-4 py-2.5 border-b border-gray-50 last:border-b-0 items-center">
+                <input
+                  value={row.name || ''}
+                  onChange={(e) => setFacilityField(id, 'name', e.target.value)}
+                  disabled={!editing}
+                  className="px-2 py-1.5 border border-gray-200 rounded text-[0.78rem] bg-white disabled:bg-gray-50 disabled:text-gray-500"
+                />
+                <input
+                  value={row.title || ''}
+                  onChange={(e) => setFacilityField(id, 'title', e.target.value)}
+                  disabled={!editing}
+                  className="px-2 py-1.5 border border-gray-200 rounded text-[0.78rem] bg-white disabled:bg-gray-50 disabled:text-gray-500"
+                />
+                <input
+                  value={row.facilityId || ''}
+                  onChange={(e) => setFacilityField(id, 'facilityId', e.target.value)}
+                  disabled={!editing}
+                  className="px-2 py-1.5 border border-gray-200 rounded text-[0.78rem] bg-white disabled:bg-gray-50 disabled:text-gray-500"
+                />
+                <input
+                  type="date"
+                  value={row.effectiveDate || ''}
+                  onChange={(e) => setFacilityField(id, 'effectiveDate', e.target.value)}
+                  disabled={!editing}
+                  className="px-2 py-1.5 border border-gray-200 rounded text-[0.78rem] bg-white disabled:bg-gray-50 disabled:text-gray-500"
+                />
+                <input
+                  value={row.predecessor || ''}
+                  onChange={(e) => setFacilityField(id, 'predecessor', e.target.value)}
+                  disabled={!editing}
+                  className="px-2 py-1.5 border border-gray-200 rounded text-[0.78rem] bg-white disabled:bg-gray-50 disabled:text-gray-500"
+                  placeholder="optional"
+                />
+
+                <div className="flex items-center gap-1.5">
+                  {editing ? (
+                    <>
+                      <button
+                        onClick={() => saveWarden(id)}
+                        className="text-[0.68rem] px-2 py-1 rounded border border-green-200 text-green-700 bg-green-50 hover:bg-green-100"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => cancelEdit(id)}
+                        className="text-[0.68rem] px-2 py-1 rounded border border-gray-200 text-gray-600 hover:bg-gray-100"
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => startWardenEdit(id)}
+                        className="text-[0.68rem] px-2 py-1 rounded border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => removeWarden(id)}
+                        className="text-[0.68rem] px-2 py-1 rounded border border-red-200 text-red-700 bg-red-50 hover:bg-red-100"
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {wardenRows.length === 0 && (
+            <div className="text-center py-8 text-[0.85rem] text-gray-400">
+              No wardens matching "{optionSearch}"
             </div>
           )}
         </div>
