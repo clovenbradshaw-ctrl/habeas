@@ -1,3 +1,9 @@
+import habeasPetitionHtmlRaw from '../../../templates/habeas_petition.html?raw';
+
+const HABEAS_PETITION_SOURCE_HTML = habeasPetitionHtmlRaw
+  .replace(/^hard code this as a template with all the formatting\s*/i, '')
+  .trim();
+
 // Seed/demo data for the application when no backend is connected
 //
 // Data tiers:
@@ -401,13 +407,16 @@ export const VARIABLE_GROUPS = [
 export const SEED_TEMPLATES = [
   {
     id: 'tpl_hc_general',
-    name: 'HC Petition (General)',
+    name: 'HC Petition (Default)',
     category: 'petition',
-    desc: 'Standard \u00A7 2241 habeas corpus petition \u2014 Yajure Hurtado framework',
+    desc: 'Default \u00A7 2241 habeas corpus petition template with preserved original HTML formatting',
     parentId: null,
     courtFormatRules: null,
     docs: 12,
     lastUsed: Date.now() - 2 * 86400000,
+    sourceHtml: HABEAS_PETITION_SOURCE_HTML,
+    sourceText: null,
+    renderMode: 'html_semantic',
     sections: [
       { id: 's1', name: 'Introduction', required: true, paraCount: 5, content: '1. Petitioner-Plaintiff {{PETITIONER_NAME}} (\u201cPetitioner\u201d) is a citizen of {{PETITIONER_COUNTRY}} who has made his home in the United States for {{YEARS_RESIDENCE}} years. On information and belief, officers of Immigration and Customs Enforcement (\u201cICE\u201d) apprehended Petitioner near his residence in {{APPREHENSION_LOCATION}} on or about {{APPREHENSION_DATE}}.\n\n2. Petitioner is presently held at the {{DETENTION_FACILITY}} in {{FACILITY_LOCATION}}.\n\n3. On September 5, 2025, the Board of Immigration Appeals (\u201cBIA\u201d) issued a precedential ruling that fundamentally reinterpreted provisions of the Immigration and Nationality Act (\u201cINA\u201d). See Matter of Yajure Hurtado, 29 I&N Dec. 216 (BIA 2025). Before this ruling, noncitizens situated like Petitioner\u2014individuals with longstanding ties to the United States who were taken into custody by ICE within the nation\u2019s interior\u2014were held under 8 U.S.C. \u00A7 1226(a) and could request bond hearings before Immigration Judges (\u201cIJs\u201d). Under the BIA\u2019s revised interpretation, however, Petitioner is now classified as subject to mandatory detention pursuant to 8 U.S.C. \u00A7 1225(b)(2)(A) and is afforded no mechanism for release on bond while removal proceedings remain pending.\n\n4. Petitioner\u2019s confinement under \u00A7 1225(b)(2)(A) contravenes the plain text of the INA and the regulations that implement it. A person who has lived in this country for {{YEARS_RESIDENCE}} years and was taken into custody far from any border cannot reasonably be characterized as an \u201capplicant for admission\u201d who is \u201cseeking admission.\u201d Petitioner\u2019s detention should instead be governed by 8 U.S.C. \u00A7 1226(a), which provides for the possibility of release on conditional parole or bond.\n\n5. Petitioner asks this Court to declare that his custody falls under \u00A7 1226(a) and its implementing regulations, and to direct Respondents either to release Petitioner or to afford him a bond hearing without further delay.' },
       { id: 's2', name: 'Custody', required: true, paraCount: 1, content: '6. Petitioner is presently held by Immigration and Customs Enforcement at the {{DETENTION_FACILITY}} in {{FACILITY_LOCATION}}. He is therefore \u201cin custody\u201d of the Department of Homeland Security within the meaning of the federal habeas corpus statute. Jones v. Cunningham, 371 U.S. 236, 243 (1963).' },
