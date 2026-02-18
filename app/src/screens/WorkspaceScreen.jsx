@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useApp, SCREENS } from '../context/AppContext';
 import { STAGES, STAGE_COLORS } from '../lib/matrix';
 import { suggestStageAdvancement } from '../lib/seedData';
-import { parseImportedFile } from '../lib/fileImport';
+import { parseImportedFile, extractVariables } from '../lib/fileImport';
 import ConfirmDialog from '../components/ConfirmDialog';
 
 const STATUS_COLORS = { filed: '#3b82f6', ready: '#22c55e', review: '#a855f7', draft: '#eab308', empty: '#9ca3af' };
@@ -53,6 +53,7 @@ export default function WorkspaceScreen() {
     state, dispatch, navigate, showToast,
     advanceStage, updateCaseVariable, updateDocStatus, updateDocOverride,
     addDocToCase, importDocToCase, updateDocContent, addComment, resolveComment, moveCaseToStage,
+    mergeCaseVariables,
     removeDocFromCase, inviteAttorneyToCase, getCaseSharedUsers,
   } = useApp();
 
@@ -233,7 +234,16 @@ export default function WorkspaceScreen() {
     try {
       const { text, fileType, sourceDataUrl } = await parseImportedFile(file);
       const name = file.name.replace(/\.[^.]+$/, '');
+      const extractedVariables = extractVariables(text);
       await importDocToCase(activeCase.id, { name, content: text, fileType, sourceDataUrl });
+      if (extractedVariables.length > 0) {
+        const varsToMerge = Object.fromEntries(
+          extractedVariables
+            .filter((key) => !(key in variables))
+            .map((key) => [key, '']),
+        );
+        await mergeCaseVariables(activeCase.id, varsToMerge);
+      }
       setShowAddDoc(false);
       showToast(`Imported: ${file.name}`);
       // Select the newly imported doc
