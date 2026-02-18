@@ -7,6 +7,8 @@ import ConfirmDialog from '../components/ConfirmDialog';
 
 const STATUS_COLORS = { filed: '#3b82f6', ready: '#22c55e', review: '#a855f7', draft: '#eab308', empty: '#9ca3af' };
 const STATUS_LABELS = { filed: 'Filed', ready: 'Ready', review: 'In Review', draft: 'Draft', empty: 'Not started' };
+const LEGAL_PREVIEW_WIDTH_PX = 816; // US Letter width at 96 DPI
+const LEGAL_PREVIEW_EDIT_WIDTH_PX = 760;
 
 // Stage context messages
 const STAGE_CONTEXT = {
@@ -128,6 +130,9 @@ export default function WorkspaceScreen() {
   const docTemplate = selectedDoc?.templateId
     ? state.templates.find(t => t.id === selectedDoc.templateId)
     : null;
+  const hasTemplatePdfPreview = !selectedDoc?.imported
+    && docTemplate?.sourceFileType === 'pdf'
+    && !!docTemplate?.sourceDataUrl;
 
   const stageSuggestion = suggestStageAdvancement(activeCase.stage, docs);
   const docComments = allComments.filter(c => c.documentId === selectedDoc?.id);
@@ -583,15 +588,19 @@ export default function WorkspaceScreen() {
                 <button onClick={() => setShowAddDoc(true)} className="text-xs font-semibold bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600">Add Document</button>
               </div>
             </div>
-          ) : selectedDoc.imported ? (
+          ) : (selectedDoc.imported || hasTemplatePdfPreview) ? (
             <ImportedDocView
               doc={selectedDoc}
+              template={docTemplate}
               variables={effectiveVars}
               onInsertVariable={handleInsertVariable}
               onContentChange={(content) => updateDocContent(activeCase.id, selectedDoc.id, content)}
             />
           ) : (
-            <div className="bg-white border border-gray-200 rounded-[14px] w-full max-w-[680px] px-12 py-10 shadow-sm min-h-[600px]">
+            <div
+              className="bg-white border border-gray-200 rounded-[14px] w-full px-12 py-10 shadow-sm min-h-[600px]"
+              style={{ maxWidth: `${LEGAL_PREVIEW_WIDTH_PX}px` }}
+            >
               {/* Court header */}
               <div className="text-center mb-7 pb-5 border-b-2 border-gray-900">
                 <div className="text-[0.82rem] font-bold tracking-[0.1em] uppercase" style={{ fontFamily: "'Source Serif 4', serif" }}>
@@ -826,7 +835,7 @@ export default function WorkspaceScreen() {
   );
 }
 
-function ImportedDocView({ doc, variables, onInsertVariable, onContentChange }) {
+function ImportedDocView({ doc, template, variables, onInsertVariable, onContentChange }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState('');
   const [varPopup, setVarPopup] = useState(null);
@@ -834,9 +843,14 @@ function ImportedDocView({ doc, variables, onInsertVariable, onContentChange }) 
   const contentRef = useRef(null);
 
   const content = doc.importedContent || '';
-  const hasVisualPdf = doc.fileType === 'pdf' && !!doc.sourceDataUrl;
+  const previewSourceDataUrl = doc.sourceDataUrl || template?.sourceDataUrl || null;
+  const previewFileType = doc.fileType || template?.sourceFileType || null;
+  const previewName = doc.name || template?.name || 'Document';
+  const hasVisualPdf = previewFileType === 'pdf' && !!previewSourceDataUrl;
+  const canEditExtractedText = doc.imported && !!doc.importedContent;
 
   function handleStartEdit() {
+    if (!canEditExtractedText) return;
     setEditContent(content);
     setIsEditing(true);
   }
@@ -876,9 +890,9 @@ function ImportedDocView({ doc, variables, onInsertVariable, onContentChange }) 
 
   if (isEditing) {
     return (
-      <div className="bg-white border border-gray-200 rounded-[14px] w-full max-w-[680px] px-8 py-6 shadow-sm min-h-[600px] flex flex-col">
+      <div className="bg-white border border-gray-200 rounded-[14px] w-full px-8 py-6 shadow-sm min-h-[600px] flex flex-col" style={{ maxWidth: `${LEGAL_PREVIEW_EDIT_WIDTH_PX}px` }}>
         <div className="flex items-center justify-between mb-4">
-          <div className="text-sm font-semibold text-gray-700">Editing: {doc.name}</div>
+          <div className="text-sm font-semibold text-gray-700">Editing: {previewName}</div>
           <div className="flex gap-2">
             <button onClick={() => setIsEditing(false)} className="text-xs px-3 py-1.5 border border-gray-200 rounded-md text-gray-500 hover:bg-gray-50">Cancel</button>
             <button onClick={handleSaveEdit} className="text-xs px-3 py-1.5 bg-blue-500 text-white rounded-md hover:bg-blue-600 font-semibold">Save</button>
@@ -896,22 +910,24 @@ function ImportedDocView({ doc, variables, onInsertVariable, onContentChange }) 
   }
 
   return (
-    <div className="bg-white border border-gray-200 rounded-[14px] w-full max-w-[680px] px-12 py-10 shadow-sm min-h-[600px] relative">
+    <div className="bg-white border border-gray-200 rounded-[14px] w-full px-12 py-10 shadow-sm min-h-[600px] relative" style={{ maxWidth: `${LEGAL_PREVIEW_WIDTH_PX}px` }}>
       {/* Document header */}
       <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200">
         <div>
           <div className="text-[0.72rem] font-semibold text-gray-400 uppercase tracking-wide mb-1">
-            Imported {doc.fileType?.toUpperCase() || 'Document'}
+            Imported {previewFileType?.toUpperCase() || 'Document'}
           </div>
-          <div className="text-[1rem] font-bold text-gray-800">{doc.name}</div>
+          <div className="text-[1rem] font-bold text-gray-800">{previewName}</div>
         </div>
-        <button
-          onClick={handleStartEdit}
-          className="text-xs font-semibold px-3 py-1.5 border border-gray-200 rounded-md text-gray-500 hover:border-blue-300 hover:text-blue-600 flex items-center gap-1.5"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-          Edit
-        </button>
+        {canEditExtractedText && (
+          <button
+            onClick={handleStartEdit}
+            className="text-xs font-semibold px-3 py-1.5 border border-gray-200 rounded-md text-gray-500 hover:border-blue-300 hover:text-blue-600 flex items-center gap-1.5"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+            Edit
+          </button>
+        )}
       </div>
 
       {hasVisualPdf ? (
@@ -920,8 +936,8 @@ function ImportedDocView({ doc, variables, onInsertVariable, onContentChange }) 
             PDF preview is rendered from the original file so it matches the filed document layout.
           </div>
           <iframe
-            src={doc.sourceDataUrl}
-            title={`${doc.name} preview`}
+            src={previewSourceDataUrl}
+            title={`${previewName} preview`}
             className="w-full min-h-[700px] border border-gray-200 rounded-lg"
           />
         </>
@@ -1115,34 +1131,44 @@ function buildDocText(doc, variables, template) {
   return text;
 }
 
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderImportedBodyHtml(content, variables) {
+  const rendered = content.replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => variables[key] || `[${key}]`);
+  return `<pre style="font-family:'Times New Roman',serif;font-size:12pt;line-height:1.8;white-space:pre-wrap;margin:0;">${escapeHtml(rendered)}</pre>`;
+}
+
 function buildDocHtml(doc, variables, template) {
   const docTitle = doc.name || 'Document';
   let body = '';
 
   if (doc.imported && doc.importedContent) {
-    const rendered = doc.importedContent
-      .replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => variables[key] || `[${key}]`)
-      .replace(/\n/g, '<br/>');
-    body = `<div style="font-family: 'Times New Roman', serif; font-size: 12pt; line-height: 1.8;">${rendered}</div>`;
+    body = renderImportedBodyHtml(doc.importedContent, variables);
   } else if (template) {
     for (const sec of template.sections || []) {
       if (!sec.required && sec.condition && !evaluateCondition(sec.condition, variables)) continue;
       body += `<h2 style="text-align:center; font-size:11pt; text-transform:uppercase; letter-spacing:1px; margin-top:24pt;">${sec.name}</h2>`;
       if (sec.content) {
-        const rendered = sec.content
-          .replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => variables[key] || `[${key}]`)
-          .replace(/\n/g, '<br/>');
-        body += `<div style="font-family: 'Times New Roman', serif; font-size: 12pt; line-height: 1.8; margin-bottom: 12pt;">${rendered}</div>`;
+        body += `<div style="margin-bottom:12pt;">${renderImportedBodyHtml(sec.content, variables)}</div>`;
       }
     }
   }
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${docTitle}</title>
-<style>body{margin:40px 60px;font-family:'Times New Roman',serif;font-size:12pt;line-height:1.8;color:#111;}
+<style>
+body{margin:0;background:#fff;color:#111;}
+.page{width:8.5in;min-height:11in;margin:0 auto;padding:1in;box-sizing:border-box;font-family:'Times New Roman',serif;font-size:12pt;line-height:1.8;}
 h2{font-size:11pt;text-align:center;text-transform:uppercase;letter-spacing:1px;margin-top:24pt;}
-@page{margin:1in;}</style></head><body>${body}</body></html>`;
+@page{size:letter;margin:1in;}
+</style></head><body><div class="page">${body}</div></body></html>`;
 }
-
 function downloadFile(content, filename, mimeType) {
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
@@ -1205,7 +1231,7 @@ h2{font-size:11pt;text-align:center;text-transform:uppercase;letter-spacing:1px;
     const effectiveVars = { ...variables, ...(doc.variableOverrides || {}) };
     const template = doc.templateId ? (templates || []).find(t => t.id === doc.templateId) : null;
     if (idx > 0) combinedHtml += '<div class="doc-break"></div>';
-    combinedHtml += `<h1>${doc.name}</h1>`;
+    combinedHtml += `<h1>${doc.name || "Document"}</h1>`;
 
     if (doc.imported && doc.importedContent) {
       const rendered = doc.importedContent
