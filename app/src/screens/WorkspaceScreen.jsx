@@ -226,9 +226,9 @@ export default function WorkspaceScreen() {
     if (!file) return;
     setImportLoading(true);
     try {
-      const { text, fileType } = await parseImportedFile(file);
+      const { text, fileType, sourceDataUrl } = await parseImportedFile(file);
       const name = file.name.replace(/\.[^.]+$/, '');
-      await importDocToCase(activeCase.id, { name, content: text, fileType });
+      await importDocToCase(activeCase.id, { name, content: text, fileType, sourceDataUrl });
       setShowAddDoc(false);
       showToast(`Imported: ${file.name}`);
       // Select the newly imported doc
@@ -834,6 +834,7 @@ function ImportedDocView({ doc, variables, onInsertVariable, onContentChange }) 
   const contentRef = useRef(null);
 
   const content = doc.importedContent || '';
+  const hasVisualPdf = doc.fileType === 'pdf' && !!doc.sourceDataUrl;
 
   function handleStartEdit() {
     setEditContent(content);
@@ -913,47 +914,62 @@ function ImportedDocView({ doc, variables, onInsertVariable, onContentChange }) 
         </button>
       </div>
 
-      {/* Tip for making variables */}
-      <div className="mb-4 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-[0.72rem] text-blue-700">
-        Select any text to convert it into a variable placeholder. Variables auto-fill across all documents.
-      </div>
-
-      {/* Document content with variable highlighting */}
-      <div
-        ref={contentRef}
-        className="relative text-[0.88rem] leading-[1.8] text-gray-900 whitespace-pre-wrap"
-        style={{ fontFamily: "'Source Serif 4', serif" }}
-        onMouseUp={handleTextSelect}
-      >
-        {renderContent(content, variables)}
-
-        {/* Variable creation popup */}
-        {varPopup && (
-          <div
-            className="absolute z-20 bg-white border border-gray-200 rounded-lg shadow-xl p-3 w-64"
-            style={{ top: varPopup.top, left: Math.max(0, varPopup.left - 128) }}
-          >
-            <div className="text-[0.7rem] font-semibold text-gray-600 mb-1.5">Make variable from selection</div>
-            <div className="text-[0.68rem] text-gray-400 mb-2 truncate">"{varPopup.text}"</div>
-            <input
-              value={newVarKey}
-              onChange={(e) => setNewVarKey(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ''))}
-              placeholder="VARIABLE_NAME"
-              className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded mb-2 font-mono outline-none focus:border-blue-300"
-            />
-            <div className="flex gap-2">
-              <button onClick={() => setVarPopup(null)} className="flex-1 text-xs px-2 py-1 border border-gray-200 rounded text-gray-500 hover:bg-gray-50">Cancel</button>
-              <button
-                onClick={handleMakeVariable}
-                disabled={!newVarKey.trim()}
-                className="flex-1 text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 font-semibold disabled:opacity-40"
-              >
-                Create {'{{'}...{'}}'}
-              </button>
-            </div>
+      {hasVisualPdf ? (
+        <>
+          <div className="mb-4 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-[0.72rem] text-green-700">
+            PDF preview is rendered from the original file so it matches the filed document layout.
           </div>
-        )}
-      </div>
+          <iframe
+            src={doc.sourceDataUrl}
+            title={`${doc.name} preview`}
+            className="w-full min-h-[700px] border border-gray-200 rounded-lg"
+          />
+        </>
+      ) : (
+        <>
+          {/* Tip for making variables */}
+          <div className="mb-4 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-[0.72rem] text-blue-700">
+            Select any text to convert it into a variable placeholder. Variables auto-fill across all documents.
+          </div>
+
+          {/* Document content with variable highlighting */}
+          <div
+            ref={contentRef}
+            className="relative text-[0.88rem] leading-[1.8] text-gray-900 whitespace-pre-wrap"
+            style={{ fontFamily: "'Source Serif 4', serif" }}
+            onMouseUp={handleTextSelect}
+          >
+            {renderContent(content, variables)}
+
+            {/* Variable creation popup */}
+            {varPopup && (
+              <div
+                className="absolute z-20 bg-white border border-gray-200 rounded-lg shadow-xl p-3 w-64"
+                style={{ top: varPopup.top, left: Math.max(0, varPopup.left - 128) }}
+              >
+                <div className="text-[0.7rem] font-semibold text-gray-600 mb-1.5">Make variable from selection</div>
+                <div className="text-[0.68rem] text-gray-400 mb-2 truncate">"{varPopup.text}"</div>
+                <input
+                  value={newVarKey}
+                  onChange={(e) => setNewVarKey(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ''))}
+                  placeholder="VARIABLE_NAME"
+                  className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded mb-2 font-mono outline-none focus:border-blue-300"
+                />
+                <div className="flex gap-2">
+                  <button onClick={() => setVarPopup(null)} className="flex-1 text-xs px-2 py-1 border border-gray-200 rounded text-gray-500 hover:bg-gray-50">Cancel</button>
+                  <button
+                    onClick={handleMakeVariable}
+                    disabled={!newVarKey.trim()}
+                    className="flex-1 text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 font-semibold disabled:opacity-40"
+                  >
+                    Create {'{{'}...{'}}'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

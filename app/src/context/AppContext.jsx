@@ -529,12 +529,12 @@ export function AppProvider({ children }) {
     return docId;
   }, []);
 
-  const importDocToCase = useCallback(async (caseId, { name, content, fileType }) => {
+  const importDocToCase = useCallback(async (caseId, { name, content, fileType, sourceDataUrl }) => {
     const docId = `doc_${Date.now()}`;
     const doc = {
       id: docId, templateId: null, name, status: 'draft',
       variableOverrides: {}, sections: [],
-      imported: true, fileType, importedContent: content,
+      imported: true, fileType, importedContent: content, sourceDataUrl,
     };
     dispatch({ type: 'ADD_DOCUMENT_TO_CASE', caseId, doc });
     if (connectedRef.current) {
