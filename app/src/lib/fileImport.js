@@ -117,7 +117,7 @@ function isAllCapsHeading(line) {
   // All letters must be uppercase
   if (letters !== letters.toUpperCase()) return false;
   // Must not be a variable like {{SOME_VAR}}
-  if (/\{\{[A-Z_]+\}\}/.test(trimmed)) return false;
+  if (/\{\{[A-Z_0-9]+\}\}/.test(trimmed)) return false;
   return true;
 }
 
@@ -294,7 +294,7 @@ function buildSection(name, rawContent) {
  * Extract unique variable names from text, sorted alphabetically.
  */
 export function extractVariables(text) {
-  const matches = text.match(/\{\{([A-Z_]+)\}\}/g);
+  const matches = text.match(/\{\{([A-Z_0-9]+)\}\}/g);
   if (!matches) return [];
   const vars = new Set(matches.map(m => m.replace(/[{}]/g, '')));
   return Array.from(vars).sort();
@@ -400,8 +400,14 @@ export async function extractTextFromPDF(file) {
 export async function extractTextFromDOCX(file) {
   const mammoth = await import('mammoth');
   const buffer = await readAsArrayBuffer(file);
-  const result = await mammoth.extractRawText({ arrayBuffer: buffer });
-  let text = result.value;
+
+  // 1) Get HTML (preserves paragraphs/bold/lists much better)
+  const htmlResult = await mammoth.convertToHtml({ arrayBuffer: buffer });
+  const html = htmlResult.value || '';
+
+  // 2) Also get raw text for section detection (your app relies on this)
+  const textResult = await mammoth.extractRawText({ arrayBuffer: buffer });
+  let text = textResult.value || '';
 
   // mammoth outputs one \n per paragraph. Convert to \n\n between paragraphs.
   // Replace single \n between non-empty lines with \n\n
@@ -415,7 +421,7 @@ export async function extractTextFromDOCX(file) {
   text = text.replace(/\u2014/g, '--');
   text = text.replace(/\u2013/g, '-');
 
-  return { text, metadata: {} };
+  return { text, html, metadata: {} };
 }
 
 /**
@@ -447,7 +453,7 @@ export function extractTextFromMarkdown(fileContent) {
   // Strip Markdown formatting but preserve {{VARIABLE}} patterns.
   // Protect variable patterns by replacing them with placeholders first.
   const varPlaceholders = [];
-  text = text.replace(/\{\{[A-Z_]+\}\}/g, (match) => {
+  text = text.replace(/\{\{[A-Z_0-9]+\}\}/g, (match) => {
     varPlaceholders.push(match);
     return `\x00VAR${varPlaceholders.length - 1}\x00`;
   });
@@ -697,7 +703,11 @@ export async function importTemplate(file, opts = {}) {
     }
 
     case 'docx': {
-      const { text } = await extractTextFromDOCX(file);
+      const { text, html } = await extractTextFromDOCX(file);
+      if (html) {
+        templateMeta.sourceHtml = html;
+        sourceFileType = 'docx';
+      }
       sections = detectSections(text);
       if (sections.length === 0) {
         console.warn('No headings detected in DOCX, falling back to chunking');
@@ -737,6 +747,7 @@ export async function importTemplate(file, opts = {}) {
     variables,
     sourceDataUrl,
     sourceFileType,
+    sourceHtml: templateMeta.sourceHtml || null,
   };
 }
 
