@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useApp, SCREENS } from '../context/AppContext';
 import { STAGE_COLORS } from '../lib/matrix';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const STAGE_FILTERS = [
   { id: 'all', label: 'All' },
@@ -11,10 +12,11 @@ const STAGE_FILTERS = [
 ];
 
 export default function CasesScreen() {
-  const { state, navigate, openCase, archiveCase, unarchiveCase } = useApp();
+  const { state, navigate, openCase, archiveCase, unarchiveCase, deleteCase } = useApp();
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState('all');
   const [showArchived, setShowArchived] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   const isAdmin = state.role === 'admin';
 
@@ -124,6 +126,18 @@ export default function CasesScreen() {
   function handleUnarchive(e, caseId) {
     e.stopPropagation();
     unarchiveCase(caseId);
+  }
+
+  function handleDeleteCase(e, caseId) {
+    e.stopPropagation();
+    setConfirmDelete(caseId);
+  }
+
+  function confirmDeleteCase() {
+    if (confirmDelete) {
+      deleteCase(confirmDelete);
+      setConfirmDelete(null);
+    }
   }
 
   return (
@@ -244,13 +258,22 @@ export default function CasesScreen() {
                     </span>
                     {/* Archive/Unarchive button */}
                     {showArchived ? (
-                      <button
-                        onClick={(e) => handleUnarchive(e, c.id)}
-                        className="text-[0.68rem] font-semibold px-[9px] py-[3px] rounded-[10px] bg-blue-50 text-blue-500 hover:bg-blue-100 transition-colors"
-                        title="Unarchive case"
-                      >
-                        Restore
-                      </button>
+                      <>
+                        <button
+                          onClick={(e) => handleUnarchive(e, c.id)}
+                          className="text-[0.68rem] font-semibold px-[9px] py-[3px] rounded-[10px] bg-blue-50 text-blue-500 hover:bg-blue-100 transition-colors"
+                          title="Unarchive case"
+                        >
+                          Restore
+                        </button>
+                        <button
+                          onClick={(e) => handleDeleteCase(e, c.id)}
+                          className="text-[0.68rem] font-semibold px-[9px] py-[3px] rounded-[10px] bg-red-50 text-red-400 hover:bg-red-100 hover:text-red-600 transition-colors"
+                          title="Delete case permanently"
+                        >
+                          Delete
+                        </button>
+                      </>
                     ) : (
                       <button
                         onClick={(e) => handleArchive(e, c.id)}
@@ -290,6 +313,16 @@ export default function CasesScreen() {
           );
         })}
       </div>
+
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title="Delete Case Permanently"
+        message={`Are you sure you want to permanently delete "${state.cases.find(c => c.id === confirmDelete)?.petitionerName || 'this case'}"? This will remove all case data, documents, and comments. This action cannot be undone.`}
+        confirmLabel="Delete Permanently"
+        danger
+        onConfirm={confirmDeleteCase}
+        onCancel={() => setConfirmDelete(null)}
+      />
     </div>
   );
 }

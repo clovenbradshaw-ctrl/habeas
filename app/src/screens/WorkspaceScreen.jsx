@@ -1,8 +1,9 @@
-import { useState, useMemo, useRef, useCallback } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useApp, SCREENS } from '../context/AppContext';
 import { STAGES, STAGE_COLORS } from '../lib/matrix';
 import { suggestStageAdvancement } from '../lib/seedData';
 import { parseImportedFile } from '../lib/fileImport';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const STATUS_COLORS = { filed: '#3b82f6', ready: '#22c55e', review: '#a855f7', draft: '#eab308', empty: '#9ca3af' };
 const STATUS_LABELS = { filed: 'Filed', ready: 'Ready', review: 'In Review', draft: 'Draft', empty: 'Not started' };
@@ -50,6 +51,7 @@ export default function WorkspaceScreen() {
     state, dispatch, navigate, showToast,
     advanceStage, updateCaseVariable, updateDocStatus, updateDocOverride,
     addDocToCase, importDocToCase, updateDocContent, addComment, resolveComment, moveCaseToStage,
+    removeDocFromCase, inviteAttorneyToCase, getCaseSharedUsers,
   } = useApp();
 
   const [rightTab, setRightTab] = useState('variables'); // 'variables' | 'review'
@@ -62,9 +64,23 @@ export default function WorkspaceScreen() {
   const [showNewVarForm, setShowNewVarForm] = useState(false);
   const [newVarName, setNewVarName] = useState('');
   const [newVarValue, setNewVarValue] = useState('');
+  const [showSharePanel, setShowSharePanel] = useState(false);
+  const [shareUserId, setShareUserId] = useState('');
+  const [sharedUsers, setSharedUsers] = useState([]);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [confirmRemoveDoc, setConfirmRemoveDoc] = useState(null);
   const fileInputRef = useRef(null);
 
   const activeCase = state.cases.find(c => c.id === state.activeCaseId);
+  const activeCaseId = activeCase?.id;
+
+  // Load shared users when share panel opens
+  useEffect(() => {
+    if (showSharePanel && activeCaseId) {
+      getCaseSharedUsers(activeCaseId).then(setSharedUsers);
+    }
+  }, [showSharePanel, activeCaseId, getCaseSharedUsers]);
+
   if (!activeCase) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -74,6 +90,32 @@ export default function WorkspaceScreen() {
         </div>
       </div>
     );
+  }
+
+  async function handleShareCase() {
+    if (!shareUserId.trim()) return;
+    setShareLoading(true);
+    try {
+      await inviteAttorneyToCase(activeCase.id, shareUserId.trim());
+      setShareUserId('');
+      // Refresh shared users
+      const updated = await getCaseSharedUsers(activeCase.id);
+      setSharedUsers(updated);
+    } catch (e) {
+      showToast('Failed to share: ' + e.message, true);
+    } finally {
+      setShareLoading(false);
+    }
+  }
+
+  async function handleRemoveDoc() {
+    if (!confirmRemoveDoc) return;
+    await removeDocFromCase(activeCase.id, confirmRemoveDoc);
+    setConfirmRemoveDoc(null);
+    // If removed doc was selected, reset to first doc
+    if (docs[state.activeDocIndex]?.id === confirmRemoveDoc) {
+      dispatch({ type: 'SET_ACTIVE_DOC', index: 0 });
+    }
   }
 
   const docs = activeCase.documents || [];
@@ -262,7 +304,76 @@ export default function WorkspaceScreen() {
           Advance Stage &rarr;
         </button>
         <div className="relative">
-          <button onClick={() => setShowExport(!showExport)} className="bg-blue-500 text-white text-[0.78rem] font-semibold px-3 py-[5px] rounded-md hover:bg-blue-600">
+          <button
+            onClick={() => { setShowSharePanel(!showSharePanel); setShowExport(false); }}
+            className={`text-[0.78rem] font-semibold px-3 py-[5px] rounded-md border transition-colors ${
+              showSharePanel
+                ? 'bg-green-50 border-green-300 text-green-700'
+                : 'border-gray-200 text-gray-500 hover:border-green-300'
+            }`}
+          >
+            Share
+          </button>
+          {showSharePanel && (
+            <div className="absolute right-0 top-9 bg-white border border-gray-200 rounded-lg shadow-xl p-4 z-10 w-80">
+              <div className="text-[0.82rem] font-bold text-gray-800 mb-1">Share Case for Review</div>
+              <p className="text-[0.68rem] text-gray-400 mb-3">
+                Invite other attorneys or staff to view and collaborate on this case and its documents.
+              </p>
+              <div className="flex gap-2 mb-3">
+                <input
+                  type="text"
+                  value={shareUserId}
+                  onChange={(e) => setShareUserId(e.target.value)}
+                  placeholder="@username:server"
+                  className="flex-1 text-xs px-2.5 py-2 border border-gray-200 rounded-md outline-none focus:border-green-300 bg-gray-50"
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleShareCase(); }}
+                />
+                <button
+                  onClick={handleShareCase}
+                  disabled={shareLoading || !shareUserId.trim()}
+                  className="text-xs font-semibold px-3 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:opacity-40"
+                >
+                  {shareLoading ? '...' : 'Invite'}
+                </button>
+              </div>
+              {/* Shared users list */}
+              <div className="border-t border-gray-100 pt-2">
+                <div className="text-[0.68rem] font-bold uppercase tracking-wide text-gray-400 mb-2">
+                  People with access ({sharedUsers.length})
+                </div>
+                {sharedUsers.length === 0 && !state.connected && (
+                  <p className="text-[0.68rem] text-gray-400">Sharing requires a server connection.</p>
+                )}
+                {sharedUsers.length === 0 && state.connected && (
+                  <p className="text-[0.68rem] text-gray-400">No shared users yet.</p>
+                )}
+                <div className="max-h-40 overflow-y-auto space-y-1.5">
+                  {sharedUsers.map((u) => {
+                    const isOwner = u.userId === activeCase.owner;
+                    const initials = (u.displayName || u.userId)
+                      .split(/[\s@]/).filter(Boolean).slice(0, 2).map(s => s[0]?.toUpperCase()).join('');
+                    return (
+                      <div key={u.userId} className="flex items-center gap-2 py-1">
+                        <div className="w-6 h-6 rounded-full bg-blue-400 flex items-center justify-center text-white text-[0.6rem] font-semibold flex-shrink-0">
+                          {initials}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[0.72rem] font-medium text-gray-700 truncate">{u.displayName || u.userId}</div>
+                        </div>
+                        {isOwner && (
+                          <span className="text-[0.6rem] font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-500">Owner</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="relative">
+          <button onClick={() => { setShowExport(!showExport); setShowSharePanel(false); }} className="bg-blue-500 text-white text-[0.78rem] font-semibold px-3 py-[5px] rounded-md hover:bg-blue-600">
             Export
           </button>
           {showExport && (
@@ -272,7 +383,7 @@ export default function WorkspaceScreen() {
               <button onClick={() => { exportDoc('pdf', selectedDoc, effectiveVars, docTemplate); setShowExport(false); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded">Download as PDF</button>
               <div className="border-t border-gray-100 my-1" />
               <div className="px-3 py-1.5 text-xs font-bold text-gray-400 uppercase tracking-wide">Full packet</div>
-              <button onClick={() => { exportAll(activeCase); setShowExport(false); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded">Download all ready docs (.zip)</button>
+              <button onClick={() => { exportAll(activeCase, state.templates); setShowExport(false); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded">Download all ready docs (.doc)</button>
               <button onClick={() => { window.print(); setShowExport(false); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded">Print packet</button>
             </div>
           )}
@@ -386,7 +497,7 @@ export default function WorkspaceScreen() {
               <div
                 key={d.id}
                 onClick={() => { dispatch({ type: 'SET_ACTIVE_DOC', index: i }); setShowExport(false); }}
-                className={`flex items-center gap-2.5 px-4 py-2.5 border-b border-gray-100 cursor-pointer transition-colors ${
+                className={`group flex items-center gap-2.5 px-4 py-2.5 border-b border-gray-100 cursor-pointer transition-colors ${
                   isSelected
                     ? 'bg-blue-50 border-l-[3px] border-l-blue-500 pl-[13px]'
                     : 'hover:bg-[#f8f7f5]'
@@ -401,7 +512,14 @@ export default function WorkspaceScreen() {
                     {d.status === 'review' && docComments.length > 0 && ` \u00b7 ${docComments.length} comment${docComments.length !== 1 ? 's' : ''}`}
                   </div>
                 </div>
-                {isSelected && <span className="text-blue-400 text-[0.7rem]">&rsaquo;</span>}
+                <button
+                  onClick={(e) => { e.stopPropagation(); setConfirmRemoveDoc(d.id); }}
+                  className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all flex-shrink-0"
+                  title="Remove document"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+                {isSelected && !confirmRemoveDoc && <span className="text-blue-400 text-[0.7rem]">&rsaquo;</span>}
               </div>
             );
           })}
@@ -538,6 +656,17 @@ export default function WorkspaceScreen() {
           )}
           </div>
         </div>
+
+        {/* Confirm remove document dialog */}
+        <ConfirmDialog
+          open={!!confirmRemoveDoc}
+          title="Remove Document"
+          message={`Are you sure you want to remove "${docs.find(d => d.id === confirmRemoveDoc)?.name || 'this document'}" from the case? This action cannot be undone.`}
+          confirmLabel="Remove"
+          danger
+          onConfirm={handleRemoveDoc}
+          onCancel={() => setConfirmRemoveDoc(null)}
+        />
 
         {/* RIGHT PANEL: Variables or Review */}
         <div className="w-[300px] min-w-[300px] border-l border-gray-200 bg-white flex flex-col overflow-y-auto">
@@ -952,30 +1081,136 @@ function evaluateCondition(condition, variables) {
   return !!(variables[condition] && variables[condition] !== 'false' && variables[condition] !== '0');
 }
 
-function exportDoc(format, doc, variables, template) {
-  if (!doc || !template) {
-    alert('No template associated with this document.');
-    return;
+function buildDocText(doc, variables, template) {
+  if (doc.imported && doc.importedContent) {
+    // For imported docs, render the content with variable substitution
+    return doc.importedContent.replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => variables[key] || `[${key}]`);
   }
+  if (!template) return '';
   let text = '';
   for (const sec of template.sections || []) {
     if (!sec.required && sec.condition && !evaluateCondition(sec.condition, variables)) continue;
-    text += `\n=== ${sec.name} ===\n`;
+    text += `\n${'='.repeat(60)}\n  ${sec.name.toUpperCase()}\n${'='.repeat(60)}\n\n`;
     if (sec.content) {
       text += sec.content.replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => variables[key] || `[${key}]`);
     }
-    text += '\n';
+    text += '\n\n';
   }
-  const blob = new Blob([text], { type: 'text/plain' });
+  return text;
+}
+
+function buildDocHtml(doc, variables, template) {
+  const docTitle = doc.name || 'Document';
+  let body = '';
+
+  if (doc.imported && doc.importedContent) {
+    const rendered = doc.importedContent
+      .replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => variables[key] || `[${key}]`)
+      .replace(/\n/g, '<br/>');
+    body = `<div style="font-family: 'Times New Roman', serif; font-size: 12pt; line-height: 1.8;">${rendered}</div>`;
+  } else if (template) {
+    for (const sec of template.sections || []) {
+      if (!sec.required && sec.condition && !evaluateCondition(sec.condition, variables)) continue;
+      body += `<h2 style="text-align:center; font-size:11pt; text-transform:uppercase; letter-spacing:1px; margin-top:24pt;">${sec.name}</h2>`;
+      if (sec.content) {
+        const rendered = sec.content
+          .replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => variables[key] || `[${key}]`)
+          .replace(/\n/g, '<br/>');
+        body += `<div style="font-family: 'Times New Roman', serif; font-size: 12pt; line-height: 1.8; margin-bottom: 12pt;">${rendered}</div>`;
+      }
+    }
+  }
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${docTitle}</title>
+<style>body{margin:40px 60px;font-family:'Times New Roman',serif;font-size:12pt;line-height:1.8;color:#111;}
+h2{font-size:11pt;text-align:center;text-transform:uppercase;letter-spacing:1px;margin-top:24pt;}
+@page{margin:1in;}</style></head><body>${body}</body></html>`;
+}
+
+function downloadFile(content, filename, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${doc.name}.txt`;
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
 }
 
-function exportAll(activeCase) {
+function exportDoc(format, doc, variables, template) {
+  if (!doc) return;
+  if (!template && !doc.imported) {
+    alert('No template associated with this document.');
+    return;
+  }
+
+  const safeName = (doc.name || 'document').replace(/[^a-zA-Z0-9_\- ]/g, '');
+
+  if (format === 'pdf') {
+    // Generate HTML and open print dialog for PDF
+    const html = buildDocHtml(doc, variables, template);
+    const printWindow = window.open('', '_blank', 'width=800,height=1100');
+    if (printWindow) {
+      printWindow.document.write(html);
+      printWindow.document.close();
+      printWindow.onload = () => { printWindow.print(); };
+    }
+  } else {
+    // Download as .docx-compatible HTML (opens in Word) or plain text
+    if (format === 'docx') {
+      const html = buildDocHtml(doc, variables, template);
+      downloadFile(html, `${safeName}.doc`, 'application/msword');
+    } else {
+      const text = buildDocText(doc, variables, template);
+      downloadFile(text, `${safeName}.txt`, 'text/plain');
+    }
+  }
+}
+
+function exportAll(activeCase, templates) {
   const readyDocs = (activeCase.documents || []).filter(d => d.status === 'ready' || d.status === 'filed');
-  alert(`Would export ${readyDocs.length} document(s) as a zip package.`);
+  if (readyDocs.length === 0) {
+    alert('No ready or filed documents to export.');
+    return;
+  }
+  const variables = activeCase.variables || {};
+  // Concatenate all docs into a single HTML file
+  let combinedHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Case Packet - ${activeCase.petitionerName || 'Case'}</title>
+<style>body{margin:40px 60px;font-family:'Times New Roman',serif;font-size:12pt;line-height:1.8;color:#111;}
+h1{font-size:14pt;text-align:center;border-bottom:2px solid #333;padding-bottom:8pt;}
+h2{font-size:11pt;text-align:center;text-transform:uppercase;letter-spacing:1px;margin-top:24pt;}
+.doc-break{page-break-before:always;border-top:3px double #333;margin-top:40pt;padding-top:20pt;}
+@page{margin:1in;}</style></head><body>`;
+
+  combinedHtml += `<h1>CASE PACKET: ${(activeCase.petitionerName || 'Unknown').toUpperCase()}</h1>`;
+  combinedHtml += `<p style="text-align:center;color:#666;font-size:10pt;">${activeCase.circuit || ''} | ${activeCase.facility || ''} | Generated ${new Date().toLocaleDateString()}</p>`;
+
+  readyDocs.forEach((doc, idx) => {
+    const effectiveVars = { ...variables, ...(doc.variableOverrides || {}) };
+    const template = doc.templateId ? (templates || []).find(t => t.id === doc.templateId) : null;
+    if (idx > 0) combinedHtml += '<div class="doc-break"></div>';
+    combinedHtml += `<h1>${doc.name}</h1>`;
+
+    if (doc.imported && doc.importedContent) {
+      const rendered = doc.importedContent
+        .replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => effectiveVars[key] || `[${key}]`)
+        .replace(/\n/g, '<br/>');
+      combinedHtml += `<div>${rendered}</div>`;
+    } else if (template) {
+      for (const sec of template.sections || []) {
+        if (!sec.required && sec.condition && !evaluateCondition(sec.condition, effectiveVars)) continue;
+        combinedHtml += `<h2>${sec.name}</h2>`;
+        if (sec.content) {
+          const rendered = sec.content
+            .replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => effectiveVars[key] || `[${key}]`)
+            .replace(/\n/g, '<br/>');
+          combinedHtml += `<div style="margin-bottom:12pt;">${rendered}</div>`;
+        }
+      }
+    }
+  });
+
+  combinedHtml += '</body></html>';
+  const safeName = (activeCase.petitionerName || 'case-packet').replace(/[^a-zA-Z0-9_\- ]/g, '');
+  downloadFile(combinedHtml, `${safeName}-packet.doc`, 'application/msword');
 }
