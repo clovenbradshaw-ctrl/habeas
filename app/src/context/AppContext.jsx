@@ -874,9 +874,16 @@ async function loadRemoteData(dispatch, role) {
     const [templates, caseMetadata, refData] = await Promise.allSettled([
       mx.loadTemplates(), mx.loadCaseMetadata(), mx.loadRefData(),
     ]);
-    // Templates and ref data are shared with all users
-    if (templates.status === 'fulfilled' && templates.value.length > 0) {
-      dispatch({ type: 'SET_TEMPLATES', templates: templates.value });
+    // Templates are shared with all users; ensure the default petition template is always available.
+    if (templates.status === 'fulfilled') {
+      const remoteTemplates = templates.value || [];
+      const existing = new Map(remoteTemplates.map(t => [t.id, t]));
+      for (const seedTemplate of SEED_TEMPLATES) {
+        if (!existing.has(seedTemplate.id)) existing.set(seedTemplate.id, seedTemplate);
+      }
+      dispatch({ type: 'SET_TEMPLATES', templates: Array.from(existing.values()) });
+    } else {
+      dispatch({ type: 'SET_TEMPLATES', templates: [...SEED_TEMPLATES] });
     }
     if (refData.status === 'fulfilled') {
       dispatch({ type: 'SET_REF_DATA', refData: refData.value });
