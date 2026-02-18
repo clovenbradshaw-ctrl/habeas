@@ -133,9 +133,12 @@ export default function WorkspaceScreen() {
   const docTemplate = selectedDoc?.templateId
     ? state.templates.find(t => t.id === selectedDoc.templateId)
     : null;
-  const hasTemplatePdfPreview = !selectedDoc?.imported
-    && docTemplate?.sourceFileType === 'pdf'
-    && !!docTemplate?.sourceDataUrl;
+  const hasTemplateImportedPreview = !selectedDoc?.imported
+    && !!docTemplate
+    && (
+      (docTemplate.sourceFileType === 'pdf' && !!docTemplate.sourceDataUrl)
+      || !!docTemplate.sourceHtml
+    );
 
   const stageSuggestion = suggestStageAdvancement(activeCase.stage, docs);
   const docComments = allComments.filter(c => c.documentId === selectedDoc?.id);
@@ -676,7 +679,7 @@ export default function WorkspaceScreen() {
                 <button onClick={() => setShowAddDoc(true)} className="text-xs font-semibold bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600">Add Document</button>
               </div>
             </div>
-          ) : (selectedDoc.imported || hasTemplatePdfPreview) ? (
+          ) : (selectedDoc.imported || hasTemplateImportedPreview) ? (
             <ImportedDocView
               doc={selectedDoc}
               template={docTemplate}
