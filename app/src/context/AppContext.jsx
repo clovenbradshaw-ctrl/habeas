@@ -511,6 +511,18 @@ export function AppProvider({ children }) {
     }
   }, []);
 
+  const mergeCaseVariables = useCallback(async (caseId, variables) => {
+    if (!variables || Object.keys(variables).length === 0) return;
+    dispatch({ type: 'MERGE_CASE_VARIABLES', caseId, variables });
+    if (connectedRef.current) {
+      const c = stateRef.current.cases.find(x => x.id === caseId);
+      if (c) {
+        const updated = { ...(c.variables || {}), ...variables };
+        try { await mx.saveCaseVariables(caseId, updated); } catch (e) { console.warn(e); }
+      }
+    }
+  }, []);
+
   const updateDocOverride = useCallback(async (caseId, docId, key, value) => {
     dispatch({ type: 'UPDATE_DOCUMENT_OVERRIDE', caseId, docId, key, value });
     if (connectedRef.current) {
@@ -842,7 +854,7 @@ export function AppProvider({ children }) {
     state, dispatch, navigate, goBack, showToast,
     openCase, openTemplate,
     doLogin, doRegister, enterDemo, changePassword,
-    createCase, advanceStage, updateCaseVariable, updateDocStatus, updateDocOverride,
+    createCase, advanceStage, updateCaseVariable, mergeCaseVariables, updateDocStatus, updateDocOverride,
     addDocToCase, importDocToCase, updateDocContent, addComment, resolveComment, moveCaseToStage,
     removeDocFromCase, deleteCase,
     createTemplate, saveTemplateNow, forkTemplate, deleteTemplate,
