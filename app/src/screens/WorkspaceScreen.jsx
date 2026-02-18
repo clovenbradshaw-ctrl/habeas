@@ -10,6 +10,15 @@ const STATUS_LABELS = { filed: 'Filed', ready: 'Ready', review: 'In Review', dra
 const LEGAL_PREVIEW_WIDTH_PX = 816; // US Letter width at 96 DPI
 const LEGAL_PREVIEW_EDIT_WIDTH_PX = 760;
 
+const DEFAULT_SECTION_LAYOUT = {
+  fontFamily: "'Source Serif 4', serif",
+  fontSize: 14,
+  lineHeight: 1.7,
+  paragraphSpacing: 12,
+  textAlign: 'justify',
+  sectionTitleAlign: 'center',
+};
+
 // Stage context messages
 const STAGE_CONTEXT = {
   'Intake': { icon: '\uD83D\uDCCB', text: 'Intake \u2014 complete client information and assign document templates', cls: 'bg-indigo-50 border-indigo-200' },
@@ -735,12 +744,26 @@ export default function WorkspaceScreen() {
                         {sectionComments.length}
                       </div>
                     )}
-                    <div className="text-[0.75rem] font-bold uppercase tracking-[0.05em] text-gray-500 text-center mb-3" style={{ fontFamily: "'Source Serif 4', serif" }}>
+                    <div
+                      className="text-[0.75rem] font-bold uppercase tracking-[0.05em] text-gray-500 mb-3"
+                      style={{
+                        fontFamily: (sec.layout?.fontFamily || DEFAULT_SECTION_LAYOUT.fontFamily),
+                        textAlign: sec.layout?.sectionTitleAlign || DEFAULT_SECTION_LAYOUT.sectionTitleAlign,
+                      }}
+                    >
                       {sec.name}
                     </div>
                     {sec.content ? (
-                      <div className="text-[0.88rem] leading-[1.7] text-gray-900" style={{ fontFamily: "'Source Serif 4', serif" }}>
-                        {renderContent(sec.content, effectiveVars)}
+                      <div
+                        className="text-gray-900"
+                        style={{
+                          fontFamily: sec.layout?.fontFamily || DEFAULT_SECTION_LAYOUT.fontFamily,
+                          fontSize: `${sec.layout?.fontSize || DEFAULT_SECTION_LAYOUT.fontSize}px`,
+                          lineHeight: sec.layout?.lineHeight || DEFAULT_SECTION_LAYOUT.lineHeight,
+                          textAlign: sec.layout?.textAlign || DEFAULT_SECTION_LAYOUT.textAlign,
+                        }}
+                      >
+                        {renderContent(sec.content, effectiveVars, sec.layout)}
                       </div>
                     ) : (
                       <div className="space-y-1">
@@ -1189,20 +1212,30 @@ function formatLabel(key) {
     .replace(/^Ausa /, 'AUSA ');
 }
 
-function renderContent(content, variables) {
+function renderContent(content, variables, layout = {}) {
   if (!content) return null;
-  const parts = content.split(/(\{\{[A-Z_0-9]+\}\})/g);
-  return parts.map((part, i) => {
-    const match = part.match(/^\{\{([A-Z_0-9]+)\}\}$/);
-    if (match) {
-      const val = variables[match[1]];
-      return (
-        <span key={i} className={val ? 'bg-green-50 border-b-2 border-green-300 px-[5px] rounded cursor-pointer hover:bg-green-100' : 'bg-amber-50 border-b-2 border-amber-300 px-[5px] rounded font-mono text-[0.78rem] text-amber-500 cursor-pointer hover:bg-amber-100'}>
-          {val || `{{${match[1]}}}`}
-        </span>
-      );
-    }
-    return <span key={i}>{part}</span>;
+  const paragraphSpacing = Number(layout.paragraphSpacing ?? DEFAULT_SECTION_LAYOUT.paragraphSpacing);
+  const paragraphs = content.split(/\n{2,}/).filter(p => p.trim().length > 0);
+  const source = paragraphs.length > 0 ? paragraphs : [content];
+
+  return source.map((paragraph, paraIdx) => {
+    const parts = paragraph.split(/(\{\{[A-Z_0-9]+\}\})/g);
+    return (
+      <p key={paraIdx} style={{ margin: `0 0 ${paragraphSpacing}px 0` }}>
+        {parts.map((part, i) => {
+          const match = part.match(/^\{\{([A-Z_0-9]+)\}\}$/);
+          if (match) {
+            const val = variables[match[1]];
+            return (
+              <span key={`${paraIdx}-${i}`} className={val ? 'bg-green-50 border-b-2 border-green-300 px-[5px] rounded cursor-pointer hover:bg-green-100' : 'bg-amber-50 border-b-2 border-amber-300 px-[5px] rounded font-mono text-[0.78rem] text-amber-500 cursor-pointer hover:bg-amber-100'}>
+                {val || `{{${match[1]}}}`}
+              </span>
+            );
+          }
+          return <span key={`${paraIdx}-${i}`}>{part}</span>;
+        })}
+      </p>
+    );
   });
 }
 
@@ -1268,7 +1301,7 @@ function escapeHtml(text) {
     .replace(/'/g, '&#39;');
 }
 
-function renderImportedBodyHtml(content, variables) {
+function renderImportedBodyHtml(content, variables, layout = DEFAULT_SECTION_LAYOUT) {
   const substituted = (content || '')
     .replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => (variables[key] ?? `[${key}]`));
 
@@ -1281,10 +1314,10 @@ function renderImportedBodyHtml(content, variables) {
     .split(/\n{2,}/)
     .map(p => p.trim())
     .filter(Boolean)
-    .map(p => `<p style="margin:0 0 12pt 0;">${p.replace(/\n/g, '<br/>')}</p>`)
+    .map(p => `<p style="margin:0 0 ${layout.paragraphSpacing || DEFAULT_SECTION_LAYOUT.paragraphSpacing}px 0;">${p.replace(/\n/g, '<br/>')}</p>`)
     .join('');
 
-  return `<div style="font-family:'Times New Roman',serif;font-size:12pt;line-height:1.8;margin:0;">${paras || '<p style="margin:0;">&nbsp;</p>'}</div>`;
+  return `<div style="font-family:${layout.fontFamily || DEFAULT_SECTION_LAYOUT.fontFamily};font-size:${layout.fontSize || DEFAULT_SECTION_LAYOUT.fontSize}px;line-height:${layout.lineHeight || DEFAULT_SECTION_LAYOUT.lineHeight};text-align:${layout.textAlign || DEFAULT_SECTION_LAYOUT.textAlign};margin:0;">${paras || '<p style=\"margin:0;\">&nbsp;</p>'}</div>`;
 }
 
 function buildDocHtml(doc, variables, template) {
@@ -1294,7 +1327,7 @@ function buildDocHtml(doc, variables, template) {
   if (doc.imported && (doc.sourceHtml || doc.importedContent)) {
     const importedHtml = doc.sourceHtml
       ? safeHtml(substituteVarsInHtml(doc.sourceHtml, variables))
-      : safeHtml(renderImportedBodyHtml(doc.importedContent || '', variables));
+      : safeHtml(renderImportedBodyHtml(doc.importedContent || '', variables, DEFAULT_SECTION_LAYOUT));
     body = `<div style="font-family:'Times New Roman',serif;font-size:12pt;line-height:1.8;">${importedHtml}</div>`;
   } else if (template) {
     if (template.sourceHtml) {
@@ -1303,9 +1336,10 @@ function buildDocHtml(doc, variables, template) {
     } else {
       for (const sec of template.sections || []) {
         if (!sec.required && sec.condition && !evaluateCondition(sec.condition, variables)) continue;
-        body += `<h2 style="text-align:center; font-size:11pt; text-transform:uppercase; letter-spacing:1px; margin-top:24pt;">${sec.name}</h2>`;
+        const secLayout = { ...DEFAULT_SECTION_LAYOUT, ...(sec.layout || {}) };
+        body += `<h2 style="text-align:${secLayout.sectionTitleAlign}; font-family:${secLayout.fontFamily}; font-size:11pt; text-transform:uppercase; letter-spacing:1px; margin-top:24pt;">${sec.name}</h2>`;
         if (sec.content) {
-          body += `<div style="margin-bottom:12pt;">${renderImportedBodyHtml(sec.content, variables)}</div>`;
+          body += `<div style="font-family:${secLayout.fontFamily};font-size:${secLayout.fontSize}px;line-height:${secLayout.lineHeight};text-align:${secLayout.textAlign};margin-bottom:${secLayout.paragraphSpacing}px;">${renderImportedBodyHtml(sec.content, variables, secLayout)}</div>`;
         }
       }
     }
@@ -1386,17 +1420,18 @@ h2{font-size:11pt;text-align:center;text-transform:uppercase;letter-spacing:1px;
     if (doc.imported && (doc.sourceHtml || doc.importedContent)) {
       const rendered = doc.sourceHtml
         ? safeHtml(substituteVarsInHtml(doc.sourceHtml, effectiveVars))
-        : safeHtml(renderImportedBodyHtml(doc.importedContent || '', effectiveVars));
+        : safeHtml(renderImportedBodyHtml(doc.importedContent || '', effectiveVars, DEFAULT_SECTION_LAYOUT));
       combinedHtml += `<div>${rendered}</div>`;
     } else if (template) {
       for (const sec of template.sections || []) {
         if (!sec.required && sec.condition && !evaluateCondition(sec.condition, effectiveVars)) continue;
-        combinedHtml += `<h2>${sec.name}</h2>`;
+        const secLayout = { ...DEFAULT_SECTION_LAYOUT, ...(sec.layout || {}) };
+        combinedHtml += `<h2 style="text-align:${secLayout.sectionTitleAlign};font-family:${secLayout.fontFamily};">${sec.name}</h2>`;
         if (sec.content) {
           const rendered = sec.content
             .replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => effectiveVars[key] || `[${key}]`)
             .replace(/\n/g, '<br/>');
-          combinedHtml += `<div style="margin-bottom:12pt;">${rendered}</div>`;
+          combinedHtml += `<div style="font-family:${secLayout.fontFamily};font-size:${secLayout.fontSize}px;line-height:${secLayout.lineHeight};text-align:${secLayout.textAlign};margin-bottom:${secLayout.paragraphSpacing}px;">${rendered}</div>`;
         }
       }
     }
