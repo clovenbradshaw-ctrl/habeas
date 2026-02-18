@@ -51,7 +51,7 @@ const CASCADE_FIELDS = new Set([
 export default function WorkspaceScreen() {
   const {
     state, dispatch, navigate, showToast,
-    advanceStage, updateCaseVariable, updateDocStatus, updateDocOverride,
+    advanceStage, updateCaseVariable, updateDocStatus,
     addDocToCase, importDocToCase, updateDocContent, addComment, resolveComment, moveCaseToStage,
     mergeCaseVariables,
     removeDocFromCase, inviteAttorneyToCase, getCaseSharedUsers,
@@ -65,9 +65,11 @@ export default function WorkspaceScreen() {
   const [collapsedGroups, setCollapsedGroups] = useState({});
   const [importLoading, setImportLoading] = useState(false);
   const [showNewVarForm, setShowNewVarForm] = useState(false);
+  const [varSearch, setVarSearch] = useState('');
   const [newVarName, setNewVarName] = useState('');
   const [newVarValue, setNewVarValue] = useState('');
   const [showSharePanel, setShowSharePanel] = useState(false);
+  const [dismissedStageSuggestionKey, setDismissedStageSuggestionKey] = useState(null);
   const [shareUserId, setShareUserId] = useState('');
   const [sharedUsers, setSharedUsers] = useState([]);
   const [shareLoading, setShareLoading] = useState(false);
@@ -137,6 +139,21 @@ export default function WorkspaceScreen() {
 
   const stageSuggestion = suggestStageAdvancement(activeCase.stage, docs);
   const docComments = allComments.filter(c => c.documentId === selectedDoc?.id);
+  const commentCountsByDoc = allComments.reduce((acc, comment) => {
+    if (!comment.documentId) return acc;
+    acc[comment.documentId] = (acc[comment.documentId] || 0) + 1;
+    return acc;
+  }, {});
+  const stageSuggestionKey = stageSuggestion ? `${activeCase.id}:${activeCase.stage}->${stageSuggestion.nextStage}` : null;
+  const suggestedTemplates = state.templates
+    .filter(t => !t.archived)
+    .sort((a, b) => (b.lastUsedAt || 0) - (a.lastUsedAt || 0))
+    .slice(0, 4);
+  const requiredVarsForSelectedDoc = (!selectedDoc?.imported && docTemplate)
+    ? Array.from(new Set((docTemplate.sections || [])
+      .flatMap(section => Array.from((section.content || '').matchAll(/\{\{([A-Z_0-9]+)\}\}/g)).map(match => match[1]))))
+    : [];
+  const missingRequiredVars = requiredVarsForSelectedDoc.filter(k => !effectiveVars[k] || !String(effectiveVars[k]).trim());
 
   // Variable groups
   const varGroups = useMemo(() => groupVariables(variables), [variables]);
@@ -173,8 +190,10 @@ export default function WorkspaceScreen() {
   async function handleAcceptSuggestion() {
     if (!stageSuggestion) return;
     await moveCaseToStage(activeCase.id, stageSuggestion.nextStage);
+    setDismissedStageSuggestionKey(null);
     showToast(`Stage advanced to ${stageSuggestion.nextStage}`);
   }
+
 
   async function handleDocStatusChange(docId, newStatus) {
     await updateDocStatus(activeCase.id, docId, newStatus);
@@ -224,7 +243,20 @@ export default function WorkspaceScreen() {
   async function handleAddDocFromTemplate(template) {
     await addDocToCase(activeCase.id, template);
     setShowAddDoc(false);
+    dispatch({ type: 'SET_ACTIVE_DOC', index: docs.length });
     showToast(`Added: ${template.name}`);
+  }
+
+  async function handleAddSuggestedTemplates() {
+    if (suggestedTemplates.length === 0) return;
+    const toAdd = suggestedTemplates.slice(0, Math.min(2, suggestedTemplates.length));
+    for (const template of toAdd) {
+      // eslint-disable-next-line no-await-in-loop
+      await addDocToCase(activeCase.id, template);
+    }
+    setShowAddDoc(false);
+    dispatch({ type: 'SET_ACTIVE_DOC', index: docs.length });
+    showToast(`Added ${toAdd.length} starter template${toAdd.length !== 1 ? 's' : ''}`);
   }
 
   async function handleFileImport(e) {
@@ -444,7 +476,7 @@ export default function WorkspaceScreen() {
       </div>
 
       {/* Stage suggestion banner */}
-      {stageSuggestion && (
+      {stageSuggestion && stageSuggestionKey !== dismissedStageSuggestionKey && (
         <div className="mx-7 mt-3.5 px-[18px] py-3 bg-green-50 border border-green-200 rounded-[10px] flex items-center gap-3">
           <span className="text-green-700 text-[0.8rem] font-medium flex-1">
             {stageSuggestion.reason} &mdash; move to {stageSuggestion.nextStage}?
@@ -452,7 +484,12 @@ export default function WorkspaceScreen() {
           <button onClick={handleAcceptSuggestion} className="text-xs font-bold bg-green-600 text-white px-4 py-1.5 rounded-md hover:bg-green-700">
             Advance to {stageSuggestion.nextStage}
           </button>
-          <button className="text-xs text-gray-500 hover:text-gray-700">Dismiss</button>
+          <button
+            onClick={() => setDismissedStageSuggestionKey(stageSuggestionKey)}
+            className="text-xs text-gray-500 hover:text-gray-700"
+          >
+            Dismiss
+          </button>
         </div>
       )}
 
@@ -505,9 +542,37 @@ export default function WorkspaceScreen() {
             </div>
           )}
 
+          {docs.length === 0 && (
+            <div className="mx-3 my-3 p-3 border border-blue-200 bg-blue-50 rounded-lg">
+              <div className="text-[0.68rem] font-bold uppercase tracking-wide text-blue-700 mb-1">Quick start</div>
+              <p className="text-[0.72rem] text-blue-800 mb-2">Add starter templates, then fill fields on the right.</p>
+              <button
+                onClick={handleAddSuggestedTemplates}
+                disabled={suggestedTemplates.length === 0}
+                className="w-full mb-2 text-xs font-semibold bg-blue-600 text-white rounded-md py-1.5 hover:bg-blue-700 disabled:opacity-40"
+              >
+                Add starter templates
+              </button>
+              {suggestedTemplates.length > 0 && (
+                <div className="space-y-1">
+                  {suggestedTemplates.slice(0, 3).map((tpl) => (
+                    <button
+                      key={tpl.id}
+                      onClick={() => handleAddDocFromTemplate(tpl)}
+                      className="w-full text-left text-[0.7rem] px-2 py-1 rounded border border-blue-200 bg-white hover:bg-blue-100"
+                    >
+                      {tpl.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Document list */}
           {docs.map((d, i) => {
             const isSelected = state.activeDocIndex === i;
+            const docCommentCount = commentCountsByDoc[d.id] || 0;
             return (
               <div
                 key={d.id}
@@ -524,7 +589,7 @@ export default function WorkspaceScreen() {
                   <div className={`text-[0.68rem] mt-0.5 ${isSelected ? 'text-blue-500' : 'text-gray-400'}`}>
                     {d.imported && <span className="text-indigo-500 mr-1">{d.fileType?.toUpperCase()}</span>}
                     {STATUS_LABELS[d.status]}
-                    {d.status === 'review' && docComments.length > 0 && ` \u00b7 ${docComments.length} comment${docComments.length !== 1 ? 's' : ''}`}
+                    {d.status === 'review' && docCommentCount > 0 && ` \u00b7 ${docCommentCount} comment${docCommentCount !== 1 ? 's' : ''}`}
                   </div>
                 </div>
                 <button
@@ -587,6 +652,19 @@ export default function WorkspaceScreen() {
                 </span>
               )}
               {docTemplate && <span className="text-[0.68rem] text-gray-400">Template: {docTemplate.name}</span>}
+            </div>
+          )}
+          {selectedDoc && missingRequiredVars.length > 0 && (
+            <div className="w-full max-w-[816px] mb-3 px-3 py-2 border border-amber-200 bg-amber-50 rounded-lg flex items-center gap-2">
+              <span className="text-[0.72rem] font-semibold text-amber-700 flex-1">
+                Missing {missingRequiredVars.length} field{missingRequiredVars.length !== 1 ? 's' : ''} used in this document.
+              </span>
+              <button
+                onClick={() => setRightTab('variables')}
+                className="text-[0.7rem] font-semibold px-2.5 py-1 rounded border border-amber-300 text-amber-700 hover:bg-amber-100"
+              >
+                Fill fields
+              </button>
             </div>
           )}
           <div className="flex-1 flex flex-col items-center p-6">
@@ -741,6 +819,13 @@ export default function WorkspaceScreen() {
                   <span className="text-[0.68rem] font-semibold text-gray-400">{filledVars.length}/{allVarKeys.length}</span>
                 </div>
                 <p className="text-[0.66rem] text-gray-400 pb-1.5">Fill in case details below. Values auto-populate into all documents.</p>
+                <input
+                  type="text"
+                  value={varSearch}
+                  onChange={(e) => setVarSearch(e.target.value)}
+                  placeholder="Search fields..."
+                  className="w-full text-[0.72rem] px-2.5 py-1.5 border border-gray-200 rounded-md outline-none focus:border-blue-300 mb-2 bg-white"
+                />
                 {/* Fill progress bar */}
                 <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden mb-1">
                   <div
@@ -754,8 +839,14 @@ export default function WorkspaceScreen() {
               </div>
               <div className="flex-1 overflow-y-auto">
                 {varGroups.map((g, gi) => {
-                  const groupFilled = g.fields.filter(f => variables[f] && String(variables[f]).trim()).length;
-                  const allFilled = groupFilled === g.fields.length;
+                  const filteredFields = g.fields.filter((field) => {
+                    if (!varSearch.trim()) return true;
+                    const q = varSearch.toLowerCase();
+                    return field.toLowerCase().includes(q) || formatLabel(field).toLowerCase().includes(q);
+                  });
+                  if (filteredFields.length === 0) return null;
+                  const groupFilled = filteredFields.filter(f => variables[f] && String(variables[f]).trim()).length;
+                  const allFilled = groupFilled === filteredFields.length;
                   const isCollapsed = collapsedGroups[g.name];
                   return (
                     <div key={gi} className="border-b border-gray-100">
@@ -766,13 +857,13 @@ export default function WorkspaceScreen() {
                         <span className={`text-[0.62rem] text-gray-400 transition-transform ${isCollapsed ? '' : 'rotate-90'}`}>&rsaquo;</span>
                         <span className="text-[0.68rem] font-bold uppercase tracking-[0.05em] text-gray-400">{g.name}</span>
                         <span className={`font-medium text-[0.62rem] ${allFilled ? 'text-green-500' : 'text-amber-500'}`}>
-                          {groupFilled}/{g.fields.length} {allFilled ? '\u2713' : '\u26A0'}
+                          {groupFilled}/{filteredFields.length} {allFilled ? '\u2713' : '\u26A0'}
                         </span>
                         {allFilled && <span className="ml-auto text-[0.6rem] text-green-500 font-medium">Complete</span>}
                       </button>
                       {!isCollapsed && (
                         <div className="px-4 pb-3">
-                          {g.fields.map((f) => {
+                          {filteredFields.map((f) => {
                             const val = variables[f] || '';
                             const isFilled = val && String(val).trim();
                             const isCascade = CASCADE_FIELDS.has(f);
@@ -803,6 +894,9 @@ export default function WorkspaceScreen() {
                 })}
                 {allVarKeys.length === 0 && (
                   <div className="px-4 py-6 text-xs text-gray-400 text-center">No variables defined for this case yet.</div>
+                )}
+                {allVarKeys.length > 0 && varSearch.trim() && !varGroups.some(g => g.fields.some(f => f.toLowerCase().includes(varSearch.toLowerCase()) || formatLabel(f).toLowerCase().includes(varSearch.toLowerCase()))) && (
+                  <div className="px-4 py-6 text-xs text-gray-400 text-center">No fields match “{varSearch}”.</div>
                 )}
 
                 {/* Add New Variable */}
