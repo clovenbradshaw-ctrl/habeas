@@ -1,9 +1,12 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { useApp, SCREENS } from '../context/AppContext';
 import { parseImportedFile } from '../lib/fileImport';
+import { VARIABLE_GROUPS } from '../lib/seedData';
 
 export default function TemplateEditScreen() {
   const { state, dispatch, navigate, showToast, saveTemplateNow } = useApp();
+  const importSectionRef = useRef(null);
+  const [importingSec, setImportingSec] = useState(false);
 
   const template = state.templates.find(t => t.id === state.activeTemplateId);
   if (!template) {
@@ -27,6 +30,13 @@ export default function TemplateEditScreen() {
       if (matches) matches.forEach(m => allVariables.add(m.replace(/[{}]/g, '')));
     }
   });
+
+  const canonicalVariables = VARIABLE_GROUPS.flatMap(group => group.variables);
+  const availableVariables = Array.from(new Set([
+    ...(template.variables || []),
+    ...canonicalVariables,
+    ...Array.from(allVariables),
+  ]));
 
   function handleSave() {
     saveTemplateNow(template.id);
@@ -81,17 +91,26 @@ export default function TemplateEditScreen() {
     dispatch({ type: 'SET_ACTIVE_TEMPLATE_SECTION', index: newIdx });
   }
 
-  function handleInsertVariable() {
-    const varName = prompt('Enter variable name (e.g., PETITIONER_NAME):');
-    if (!varName) return;
-    const cleaned = varName.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_');
-    const insertion = `{{${cleaned}}}`;
-    const newContent = (selectedSection.content || '') + insertion;
-    handleSectionContentChange(newContent);
+  function insertVariableToken(varName) {
+    if (!selectedSection || !varName) return;
+    const insertion = `{{${varName}}}`;
+    const ta = document.getElementById('section-content-editor');
+    if (ta) {
+      const start = ta.selectionStart;
+      const end = ta.selectionEnd;
+      const text = selectedSection.content || '';
+      const newText = text.slice(0, start) + insertion + text.slice(end);
+      handleSectionContentChange(newText);
+      requestAnimationFrame(() => {
+        ta.focus();
+        const cursor = start + insertion.length;
+        ta.setSelectionRange(cursor, cursor);
+      });
+      return;
+    }
+    handleSectionContentChange((selectedSection.content || '') + insertion);
   }
 
-  const importSectionRef = useRef(null);
-  const [importingSec, setImportingSec] = useState(false);
 
   async function handleImportToSection(e) {
     const file = e.target.files?.[0];
@@ -325,12 +344,24 @@ export default function TemplateEditScreen() {
                       >
                         ¶ New para
                       </button>
-                      <button
-                        onClick={handleInsertVariable}
-                        className="text-xs px-2 py-1 rounded hover:bg-gray-200 text-blue-600 font-semibold"
-                      >
-                        {"{{ }}"} Insert variable
-                      </button>
+                      <label className="text-xs text-blue-600 font-semibold flex items-center gap-1">
+                        {"{{ }}"}
+                        <span className="sr-only">Insert variable</span>
+                        <select
+                          value=""
+                          onChange={(e) => insertVariableToken(e.target.value)}
+                          className="text-xs px-2 py-1 rounded border border-blue-200 bg-white text-blue-700 hover:bg-blue-50 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        >
+                          <option value="" disabled>
+                            Insert variable
+                          </option>
+                          {availableVariables.map((variableName) => (
+                            <option key={variableName} value={variableName}>
+                              {variableName}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
                       <span className="text-gray-300">|</span>
                       <button
                         onClick={() => importSectionRef.current?.click()}
