@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useApp, SCREENS } from '../context/AppContext';
+import { parseImportedFile } from '../lib/fileImport';
 
 export default function TemplateEditScreen() {
   const { state, dispatch, navigate, showToast, saveTemplateNow } = useApp();
@@ -89,6 +90,41 @@ export default function TemplateEditScreen() {
     handleSectionContentChange(newContent);
   }
 
+  const importSectionRef = useRef(null);
+  const [importingSec, setImportingSec] = useState(false);
+
+  async function handleImportToSection(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportingSec(true);
+    try {
+      const { text } = await parseImportedFile(file);
+      if (selectedSection) {
+        // Replace current section content with imported text
+        handleSectionContentChange(text);
+        showToast(`Imported into "${selectedSection.name}"`);
+      } else {
+        // Create a new section with the imported content
+        const name = file.name.replace(/\.[^.]+$/, '');
+        const newSection = {
+          id: `s_${Date.now()}`,
+          name,
+          required: true,
+          paraCount: text.split(/\n{2,}/).length,
+          content: text,
+        };
+        dispatch({ type: 'ADD_TEMPLATE_SECTION', templateId: template.id, section: newSection });
+        dispatch({ type: 'SET_ACTIVE_TEMPLATE_SECTION', index: sections.length });
+        showToast(`Imported as new section "${name}"`);
+      }
+    } catch (err) {
+      showToast(err.message || 'Failed to import file', true);
+    } finally {
+      setImportingSec(false);
+      if (importSectionRef.current) importSectionRef.current.value = '';
+    }
+  }
+
   function handleTemplateNameChange(value) {
     dispatch({ type: 'UPDATE_TEMPLATE', templateId: template.id, data: { name: value } });
   }
@@ -168,6 +204,17 @@ export default function TemplateEditScreen() {
             <div className="px-2 pb-2 space-y-1">
               <button onClick={handleAddSection} className="w-full text-xs font-semibold text-blue-600 border border-dashed border-blue-300 rounded-lg py-1.5 hover:bg-blue-50">
                 + Add section
+              </button>
+              <button
+                onClick={() => {
+                  // Temporarily deselect so import creates a new section
+                  dispatch({ type: 'SET_ACTIVE_TEMPLATE_SECTION', index: -1 });
+                  setTimeout(() => importSectionRef.current?.click(), 0);
+                }}
+                disabled={importingSec}
+                className="w-full text-xs font-semibold text-gray-500 border border-dashed border-gray-300 rounded-lg py-1.5 hover:bg-gray-50"
+              >
+                {importingSec ? 'Importing\u2026' : 'Import section'}
               </button>
             </div>
           </div>
@@ -284,6 +331,21 @@ export default function TemplateEditScreen() {
                       >
                         {"{{ }}"} Insert variable
                       </button>
+                      <span className="text-gray-300">|</span>
+                      <button
+                        onClick={() => importSectionRef.current?.click()}
+                        disabled={importingSec}
+                        className="text-xs px-2 py-1 rounded hover:bg-gray-200 text-gray-600 font-semibold"
+                      >
+                        {importingSec ? 'Importing\u2026' : 'Import from file'}
+                      </button>
+                      <input
+                        ref={importSectionRef}
+                        type="file"
+                        accept=".pdf,.docx,.doc,.md,.markdown,.txt,.text"
+                        onChange={handleImportToSection}
+                        className="hidden"
+                      />
                     </div>
                     <textarea
                       id="section-content-editor"

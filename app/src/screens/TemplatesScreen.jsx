@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useApp, SCREENS } from '../context/AppContext';
+import { parseImportedFile } from '../lib/fileImport';
 
 const CATEGORIES = [
   { id: 'all', label: 'All' },
@@ -19,6 +20,8 @@ export default function TemplatesScreen() {
   const [newTplDesc, setNewTplDesc] = useState('');
   const [useCaseTarget, setUseCaseTarget] = useState(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const importInputRef = useRef(null);
 
   const allTemplates = state.templates;
   const templates = showArchived ? allTemplates.filter(t => t.archived) : allTemplates.filter(t => !t.archived);
@@ -83,6 +86,78 @@ export default function TemplatesScreen() {
     openCase(caseId);
   }
 
+  async function handleImportFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const { text } = await parseImportedFile(file);
+      const name = file.name.replace(/\.[^.]+$/, '');
+
+      // Split imported text into sections by double-newline paragraphs,
+      // grouping into ~2000 char chunks so sections aren't too granular
+      const paragraphs = text.split(/\n{2,}/).filter(p => p.trim());
+      const sections = [];
+      let current = '';
+      let sectionIdx = 1;
+      for (const para of paragraphs) {
+        if (current.length + para.length > 2000 && current.length > 0) {
+          sections.push({
+            id: `s_${Date.now()}_${sectionIdx}`,
+            name: `Section ${sectionIdx}`,
+            required: true,
+            paraCount: current.split(/\n{2,}/).length,
+            content: current.trim(),
+          });
+          sectionIdx++;
+          current = para;
+        } else {
+          current += (current ? '\n\n' : '') + para;
+        }
+      }
+      if (current.trim()) {
+        sections.push({
+          id: `s_${Date.now()}_${sectionIdx}`,
+          name: sections.length === 0 ? 'Content' : `Section ${sectionIdx}`,
+          required: true,
+          paraCount: current.split(/\n{2,}/).length,
+          content: current.trim(),
+        });
+      }
+      if (sections.length === 0) {
+        sections.push({
+          id: `s_${Date.now()}_1`,
+          name: 'Content',
+          required: true,
+          paraCount: 1,
+          content: '',
+        });
+      }
+
+      // Detect any {{VARIABLE}} placeholders already in the content
+      const vars = new Set();
+      sections.forEach(s => {
+        const matches = s.content.match(/\{\{([A-Z_]+)\}\}/g);
+        if (matches) matches.forEach(m => vars.add(m.replace(/[{}]/g, '')));
+      });
+
+      const id = await createTemplate({
+        name,
+        category: 'petition',
+        desc: `Imported from ${file.name}`,
+        sections,
+        variables: Array.from(vars),
+      });
+      showToast('Template created from imported file');
+      openTemplate(id);
+    } catch (err) {
+      showToast(err.message || 'Failed to import file', true);
+    } finally {
+      setImporting(false);
+      if (importInputRef.current) importInputRef.current.value = '';
+    }
+  }
+
   function formatLastUsed(ts) {
     if (!ts) return 'Never';
     const diff = Date.now() - ts;
@@ -120,6 +195,20 @@ export default function TemplatesScreen() {
               {showArchived ? 'Show Active' : `Archived (${archivedCount})`}
             </button>
           )}
+          <button
+            onClick={() => importInputRef.current?.click()}
+            disabled={importing}
+            className="inline-flex items-center gap-1.5 bg-white border border-gray-200 text-gray-600 text-[0.8rem] font-semibold px-4 py-2 rounded-md hover:border-blue-300 hover:text-blue-600 transition-colors disabled:opacity-50"
+          >
+            {importing ? 'Importing\u2026' : 'Import from File'}
+          </button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".pdf,.docx,.doc,.md,.markdown,.txt,.text"
+            onChange={handleImportFile}
+            className="hidden"
+          />
           <button
             onClick={() => setShowNewTemplate(true)}
             className="inline-flex items-center gap-1.5 bg-blue-500 text-white text-[0.8rem] font-semibold px-4 py-2 rounded-md hover:bg-blue-600 transition-colors"
