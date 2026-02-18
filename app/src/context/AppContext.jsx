@@ -148,6 +148,16 @@ function reducer(state, action) {
       });
       return { ...state, cases };
     }
+    case 'UPDATE_DOCUMENT_CONTENT': {
+      const cases = state.cases.map(c => {
+        if (c.id !== action.caseId) return c;
+        const documents = (c.documents || []).map(d =>
+          d.id === action.docId ? { ...d, importedContent: action.content } : d
+        );
+        return { ...c, documents };
+      });
+      return { ...state, cases };
+    }
     case 'REMOVE_DOCUMENT_FROM_CASE': {
       const cases = state.cases.map(c => {
         if (c.id !== action.caseId) return c;
@@ -489,6 +499,35 @@ export function AppProvider({ children }) {
     return docId;
   }, []);
 
+  const importDocToCase = useCallback(async (caseId, { name, content, fileType }) => {
+    const docId = `doc_${Date.now()}`;
+    const doc = {
+      id: docId, templateId: null, name, status: 'draft',
+      variableOverrides: {}, sections: [],
+      imported: true, fileType, importedContent: content,
+    };
+    dispatch({ type: 'ADD_DOCUMENT_TO_CASE', caseId, doc });
+    if (connectedRef.current) {
+      try {
+        await mx.saveCaseDocument(caseId, docId, doc);
+        const c = stateRef.current.cases.find(x => x.id === caseId);
+        if (c) await mx.saveCaseMetadata(caseId, { ...c, docReadiness: getDocReadiness([...(c.documents || []), doc]) });
+      } catch (e) { console.warn(e); }
+    }
+    return docId;
+  }, []);
+
+  const updateDocContent = useCallback(async (caseId, docId, content) => {
+    dispatch({ type: 'UPDATE_DOCUMENT_CONTENT', caseId, docId, content });
+    if (connectedRef.current) {
+      const c = stateRef.current.cases.find(x => x.id === caseId);
+      const doc = (c?.documents || []).find(d => d.id === docId);
+      if (doc) {
+        try { await mx.saveCaseDocument(caseId, docId, { ...doc, importedContent: content }); } catch (e) { console.warn(e); }
+      }
+    }
+  }, []);
+
   const addComment = useCallback(async (caseId, comment) => {
     dispatch({ type: 'ADD_COMMENT', caseId, comment });
     if (connectedRef.current) {
@@ -676,7 +715,7 @@ export function AppProvider({ children }) {
     openCase, openTemplate,
     doLogin, enterDemo,
     createCase, advanceStage, updateCaseVariable, updateDocStatus, updateDocOverride,
-    addDocToCase, addComment, resolveComment, moveCaseToStage,
+    addDocToCase, importDocToCase, updateDocContent, addComment, resolveComment, moveCaseToStage,
     createTemplate, saveTemplateNow, forkTemplate, deleteTemplate,
     inviteAttorneyToCase,
     archiveCase, unarchiveCase, archiveTemplate, unarchiveTemplate,
