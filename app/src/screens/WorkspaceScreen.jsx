@@ -947,11 +947,12 @@ function ImportedDocView({ doc, template, variables, onInsertVariable, onContent
   const contentRef = useRef(null);
 
   const content = doc.importedContent || '';
+  const sourceHtml = doc.sourceHtml || template?.sourceHtml || null;
   const previewSourceDataUrl = doc.sourceDataUrl || template?.sourceDataUrl || null;
   const previewFileType = doc.fileType || template?.sourceFileType || null;
   const previewName = doc.name || template?.name || 'Document';
   const hasVisualPdf = previewFileType === 'pdf' && !!previewSourceDataUrl;
-  const canEditExtractedText = doc.imported && !!doc.importedContent;
+  const canEditExtractedText = doc.imported && !!doc.importedContent && !sourceHtml;
 
   function handleStartEdit() {
     if (!canEditExtractedText) return;
@@ -1055,11 +1056,15 @@ function ImportedDocView({ doc, template, variables, onInsertVariable, onContent
           {/* Document content with variable highlighting */}
           <div
             ref={contentRef}
-            className="relative text-[0.88rem] leading-[1.8] text-gray-900 whitespace-pre-wrap"
+            className="relative text-[0.88rem] leading-[1.8] text-gray-900"
             style={{ fontFamily: "'Source Serif 4', serif" }}
-            onMouseUp={handleTextSelect}
+            onMouseUp={!sourceHtml ? handleTextSelect : undefined}
           >
-            {renderContent(content, variables)}
+            {sourceHtml ? (
+              <div dangerouslySetInnerHTML={{ __html: safeHtml(substituteVarsInHtml(sourceHtml, variables)) }} />
+            ) : (
+              <div className="whitespace-pre-wrap">{renderContent(content, variables)}</div>
+            )}
 
             {/* Variable creation popup */}
             {varPopup && (
@@ -1217,10 +1222,26 @@ function evaluateCondition(condition, variables) {
   return !!(variables[condition] && variables[condition] !== 'false' && variables[condition] !== '0');
 }
 
+
+function substituteVarsInHtml(html, vars) {
+  return (html || '').replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, k) => (vars[k] ?? `[${k}]`));
+}
+
+function safeHtml(html) {
+  const doc = new DOMParser().parseFromString(html || '', 'text/html');
+  doc.querySelectorAll('script,style,iframe,object').forEach((el) => el.remove());
+  doc.querySelectorAll('*').forEach((el) => {
+    Array.from(el.attributes).forEach((attr) => {
+      if (/^on/i.test(attr.name)) el.removeAttribute(attr.name);
+    });
+  });
+  return doc.body.innerHTML;
+}
+
 function buildDocText(doc, variables, template) {
-  if (doc.imported && doc.importedContent) {
-    // For imported docs, render the content with variable substitution
-    return doc.importedContent.replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => variables[key] || `[${key}]`);
+  if (doc.imported && (doc.sourceText || doc.importedContent)) {
+    const text = doc.sourceText || doc.importedContent || '';
+    return text.replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => variables[key] || `[${key}]`);
   }
   if (!template) return '';
   let text = '';
@@ -1267,12 +1288,14 @@ function buildDocHtml(doc, variables, template) {
   const docTitle = doc.name || 'Document';
   let body = '';
 
-  if (doc.imported && doc.importedContent) {
-    body = renderImportedBodyHtml(doc.importedContent, variables);
+  if (doc.imported && (doc.sourceHtml || doc.importedContent)) {
+    const importedHtml = doc.sourceHtml
+      ? safeHtml(substituteVarsInHtml(doc.sourceHtml, variables))
+      : safeHtml(renderImportedBodyHtml(doc.importedContent || '', variables));
+    body = `<div style="font-family:'Times New Roman',serif;font-size:12pt;line-height:1.8;">${importedHtml}</div>`;
   } else if (template) {
     if (template.sourceHtml) {
-      // HTML already formatted (DOCX import) – just substitute variables safely
-      const substituted = template.sourceHtml.replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => variables[key] || `[${key}]`);
+      const substituted = safeHtml(substituteVarsInHtml(template.sourceHtml, variables));
       body = `<div style="font-family:'Times New Roman',serif;font-size:12pt;line-height:1.8;">${substituted}</div>`;
     } else {
       for (const sec of template.sections || []) {
@@ -1357,10 +1380,10 @@ h2{font-size:11pt;text-align:center;text-transform:uppercase;letter-spacing:1px;
     if (idx > 0) combinedHtml += '<div class="doc-break"></div>';
     combinedHtml += `<h1>${doc.name || "Document"}</h1>`;
 
-    if (doc.imported && doc.importedContent) {
-      const rendered = doc.importedContent
-        .replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => effectiveVars[key] || `[${key}]`)
-        .replace(/\n/g, '<br/>');
+    if (doc.imported && (doc.sourceHtml || doc.importedContent)) {
+      const rendered = doc.sourceHtml
+        ? safeHtml(substituteVarsInHtml(doc.sourceHtml, effectiveVars))
+        : safeHtml(renderImportedBodyHtml(doc.importedContent || '', effectiveVars));
       combinedHtml += `<div>${rendered}</div>`;
     } else if (template) {
       for (const sec of template.sections || []) {

@@ -552,7 +552,7 @@ export function AppProvider({ children }) {
 
   const addDocToCase = useCallback(async (caseId, template) => {
     const docId = `doc_${Date.now()}`;
-    const doc = { id: docId, templateId: template.id, name: template.name, status: 'draft', variableOverrides: {}, sections: [] };
+    const doc = { id: docId, templateId: template.id, name: template.name, status: 'draft', variableOverrides: {}, sections: [], renderMode: template.renderMode || 'html_semantic', sourceHtml: template.sourceHtml || null, sourceText: template.sourceText || null };
     dispatch({ type: 'ADD_DOCUMENT_TO_CASE', caseId, doc });
     if (connectedRef.current) {
       try {
@@ -564,12 +564,12 @@ export function AppProvider({ children }) {
     return docId;
   }, []);
 
-  const importDocToCase = useCallback(async (caseId, { name, content, fileType, sourceDataUrl }) => {
+  const importDocToCase = useCallback(async (caseId, { name, content, fileType, sourceDataUrl, sourceHtml = null, sourceText = null, renderMode = 'html_semantic' }) => {
     const docId = `doc_${Date.now()}`;
     const doc = {
       id: docId, templateId: null, name, status: 'draft',
       variableOverrides: {}, sections: [],
-      imported: true, fileType, importedContent: content, sourceDataUrl,
+      imported: true, fileType, importedContent: content, sourceDataUrl, sourceHtml, sourceText: sourceText || content || null, renderMode,
     };
     dispatch({ type: 'ADD_DOCUMENT_TO_CASE', caseId, doc });
     if (connectedRef.current) {
