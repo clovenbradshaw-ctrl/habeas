@@ -14,6 +14,7 @@ const SCREENS = {
   PIPELINE: 'pipeline',
   INTAKE: 'intake',
   USERS: 'users',
+  VARIABLES_REF: 'variables_ref',
 };
 
 const initialState = {
