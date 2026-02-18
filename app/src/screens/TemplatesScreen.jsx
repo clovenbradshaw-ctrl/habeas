@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { useApp } from '../context/AppContext';
-import { parseImportedFile } from '../lib/fileImport';
+import { importTemplate } from '../lib/fileImport';
 
 const CATEGORIES = [
   { id: 'all', label: 'All' },
@@ -102,63 +102,8 @@ export default function TemplatesScreen() {
     if (!file) return;
     setImporting(true);
     try {
-      const { text } = await parseImportedFile(file);
-      const name = file.name.replace(/\.[^.]+$/, '');
-
-      // Split imported text into sections by double-newline paragraphs,
-      // grouping into ~2000 char chunks so sections aren't too granular
-      const paragraphs = text.split(/\n{2,}/).filter(p => p.trim());
-      const sections = [];
-      let current = '';
-      let sectionIdx = 1;
-      for (const para of paragraphs) {
-        if (current.length + para.length > 2000 && current.length > 0) {
-          sections.push({
-            id: `s_${Date.now()}_${sectionIdx}`,
-            name: `Section ${sectionIdx}`,
-            required: true,
-            paraCount: current.split(/\n{2,}/).length,
-            content: current.trim(),
-          });
-          sectionIdx++;
-          current = para;
-        } else {
-          current += (current ? '\n\n' : '') + para;
-        }
-      }
-      if (current.trim()) {
-        sections.push({
-          id: `s_${Date.now()}_${sectionIdx}`,
-          name: sections.length === 0 ? 'Content' : `Section ${sectionIdx}`,
-          required: true,
-          paraCount: current.split(/\n{2,}/).length,
-          content: current.trim(),
-        });
-      }
-      if (sections.length === 0) {
-        sections.push({
-          id: `s_${Date.now()}_1`,
-          name: 'Content',
-          required: true,
-          paraCount: 1,
-          content: '',
-        });
-      }
-
-      // Detect any {{VARIABLE}} placeholders already in the content
-      const vars = new Set();
-      sections.forEach(s => {
-        const matches = s.content.match(/\{\{([A-Z_]+)\}\}/g);
-        if (matches) matches.forEach(m => vars.add(m.replace(/[{}]/g, '')));
-      });
-
-      const id = await createTemplate({
-        name,
-        category: 'petition',
-        desc: `Imported from ${file.name}`,
-        sections,
-        variables: Array.from(vars),
-      });
+      const template = await importTemplate(file);
+      const id = await createTemplate(template);
       showToast('Template created from imported file');
       openTemplate(id);
     } catch (err) {
@@ -216,7 +161,7 @@ export default function TemplatesScreen() {
           <input
             ref={importInputRef}
             type="file"
-            accept=".pdf,.docx,.doc,.md,.markdown,.txt,.text"
+            accept=".pdf,.docx,.doc,.json,.md,.markdown,.txt,.text"
             onChange={handleImportFile}
             className="hidden"
           />
