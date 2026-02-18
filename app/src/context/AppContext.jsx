@@ -75,6 +75,29 @@ function reducer(state, action) {
     }
     case 'SET_REF_DATA':
       return { ...state, refData: action.refData };
+    case 'UPSERT_REF_RECORD': {
+      const currentRows = state.refData[action.refType] || [];
+      const rowExists = currentRows.some(r => r.id === action.record.id);
+      return {
+        ...state,
+        refData: {
+          ...state.refData,
+          [action.refType]: rowExists
+            ? currentRows.map(r => (r.id === action.record.id ? action.record : r))
+            : [...currentRows, action.record],
+        },
+      };
+    }
+    case 'DELETE_REF_RECORD': {
+      const currentRows = state.refData[action.refType] || [];
+      return {
+        ...state,
+        refData: {
+          ...state.refData,
+          [action.refType]: currentRows.filter(r => r.id !== action.id),
+        },
+      };
+    }
     case 'SET_ACTIVE_CASE':
       return { ...state, activeCaseId: action.caseId, activeDocIndex: 0 };
     case 'SET_ACTIVE_DOC':
@@ -754,6 +777,31 @@ export function AppProvider({ children }) {
     }
   }, []);
 
+  const upsertRefRecord = useCallback(async (refType, record) => {
+    dispatch({ type: 'UPSERT_REF_RECORD', refType, record });
+    if (connectedRef.current) {
+      try {
+        const { id, ...data } = record;
+        await mx.saveRefRecord(refType, id, data);
+      } catch (e) {
+        console.warn(e);
+        showToast(`Failed to save ${refType} record: ${e.message}`, true);
+      }
+    }
+  }, [showToast]);
+
+  const deleteRefRecord = useCallback(async (refType, id) => {
+    dispatch({ type: 'DELETE_REF_RECORD', refType, id });
+    if (connectedRef.current) {
+      try {
+        await mx.deleteRefRecord(refType, id);
+      } catch (e) {
+        console.warn(e);
+        showToast(`Failed to delete ${refType} record: ${e.message}`, true);
+      }
+    }
+  }, [showToast]);
+
   const removeDocFromCase = useCallback(async (caseId, docId) => {
     dispatch({ type: 'REMOVE_DOCUMENT_FROM_CASE', caseId, docId });
     if (connectedRef.current) {
@@ -801,6 +849,7 @@ export function AppProvider({ children }) {
     inviteAttorneyToCase, getCaseSharedUsers,
     archiveCase, unarchiveCase, archiveTemplate, unarchiveTemplate,
     createUser, inviteUser, removeUser, loadUsers,
+    upsertRefRecord, deleteRefRecord,
     SCREENS,
   };
 
