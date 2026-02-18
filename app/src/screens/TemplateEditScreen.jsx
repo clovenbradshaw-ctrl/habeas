@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { useApp, SCREENS } from '../context/AppContext';
 import { parseImportedFile } from '../lib/fileImport';
 import { VARIABLE_GROUPS } from '../lib/seedData';
+import { US_LETTER_PAGE_WIDTH_PX, US_LETTER_CONTENT_WIDTH_PX } from '../lib/pageLayout';
 
 const FONT_OPTIONS = [
   { label: 'Source Serif 4', value: "'Source Serif 4', serif" },
@@ -26,6 +27,9 @@ const DEFAULT_LAYOUT = {
   textAlign: 'justify',
   sectionTitleAlign: 'center',
 };
+
+const EDITOR_PAGE_WIDTH_PX = US_LETTER_PAGE_WIDTH_PX;
+const EDITOR_TEXT_WIDTH_PX = US_LETTER_CONTENT_WIDTH_PX;
 
 export default function TemplateEditScreen() {
   const { state, dispatch, navigate, showToast, saveTemplateNow } = useApp();
@@ -307,7 +311,7 @@ export default function TemplateEditScreen() {
 
           {selectedSection ? (
             <div className={`grid gap-3 ${hasPdfSource && showOriginalPdf ? 'grid-cols-2' : 'grid-cols-1'}`}>
-              <div className="border border-gray-200 rounded-lg bg-white p-4">
+              <div className="border border-gray-200 rounded-lg bg-white p-4 mx-auto w-full" style={{ maxWidth: `${EDITOR_PAGE_WIDTH_PX}px` }}>
               <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
                 Section: {selectedSection.name}
               </div>
@@ -526,8 +530,9 @@ export default function TemplateEditScreen() {
                       id="section-content-editor"
                       value={selectedSection.content || ''}
                       onChange={(e) => handleSectionContentChange(e.target.value)}
-                      className="w-full p-3 min-h-48 text-sm text-gray-700 leading-relaxed resize-y border-none focus:outline-none"
+                      className="w-full p-3 min-h-48 text-sm text-gray-700 leading-relaxed resize-y border-none focus:outline-none mx-auto block"
                       style={{
+                        maxWidth: `${EDITOR_TEXT_WIDTH_PX}px`,
                         fontFamily: selectedSectionLayout.fontFamily,
                         fontSize: `${selectedSectionLayout.fontSize}px`,
                         lineHeight: selectedSectionLayout.lineHeight,
@@ -542,7 +547,7 @@ export default function TemplateEditScreen() {
               </div>
 
               {hasPdfSource && showOriginalPdf && (
-                <div className="border border-gray-200 rounded-lg bg-white p-3 flex flex-col">
+                <div className="border border-gray-200 rounded-lg bg-white p-3 flex flex-col mx-auto w-full" style={{ maxWidth: `${EDITOR_PAGE_WIDTH_PX}px` }}>
                   <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">
                     Original PDF preview
                   </div>
