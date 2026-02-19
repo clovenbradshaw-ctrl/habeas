@@ -359,14 +359,14 @@ export const VARIABLE_GROUPS = [
     name: 'Petitioner',
     variables: [
       'PETITIONER_NAME', 'PETITIONER_COUNTRY', 'PETITIONER_COUNTRY_FORMAL', 'PETITIONER_DEMONYM',
-      'ENTRY_DATE', 'YEARS_RESIDENCE',
+      'ENTRY_DATE', 'ENTRY_METHOD', 'YEARS_RESIDENCE',
       'APPREHENSION_LOCATION', 'APPREHENSION_DATE', 'CRIMINAL_HISTORY', 'COMMUNITY_TIES',
     ],
   },
   {
     name: 'Detention',
     variables: [
-      'DETENTION_FACILITY', 'FACILITY_LOCATION', 'FACILITY_OPERATOR',
+      'DETENTION_FACILITY', 'FACILITY_LOCATION', 'FACILITY_CITY', 'FACILITY_STATE', 'FACILITY_OPERATOR',
       'WARDEN_NAME', 'WARDEN_TITLE', 'DETENTION_DAYS', 'DETENTION_STATUTE',
     ],
   },
@@ -374,14 +374,15 @@ export const VARIABLE_GROUPS = [
     name: 'Court',
     variables: [
       'DISTRICT_FULL', 'DIVISION', 'COURT_LOCATION', 'COURT_ADDRESS',
-      'CASE_NUMBER', 'JUDGE_NAME', 'JUDGE_TITLE', 'JUDGE_CODE', 'FILING_DATE',
+      'CASE_NUMBER', 'JUDGE_NAME', 'JUDGE_TITLE', 'JUDGE_CODE',
+      'FILING_DATE', 'FILING_DAY', 'FILING_MONTH_YEAR',
     ],
   },
   {
     name: 'Officials',
     variables: [
       'FOD_NAME', 'FIELD_OFFICE', 'FIELD_OFFICE_ADDRESS',
-      'ICE_DIRECTOR', 'ICE_DIRECTOR_ACTING',
+      'ICE_DIRECTOR', 'ICE_DIRECTOR_ACTING', 'ICE_DIRECTOR_TITLE',
       'DHS_SECRETARY', 'AG_NAME',
     ],
   },
@@ -389,9 +390,9 @@ export const VARIABLE_GROUPS = [
     name: 'Attorneys',
     variables: [
       'ATTORNEY_1_NAME', 'ATTORNEY_1_BAR', 'ATTORNEY_1_FIRM', 'ATTORNEY_1_ADDR',
-      'ATTORNEY_1_PHONE', 'ATTORNEY_1_EMAIL',
+      'ATTORNEY_1_CITY_STATE_ZIP', 'ATTORNEY_1_PHONE', 'ATTORNEY_1_FAX', 'ATTORNEY_1_EMAIL',
       'ATTORNEY_2_NAME', 'ATTORNEY_2_BAR', 'ATTORNEY_2_FIRM', 'ATTORNEY_2_ADDR',
-      'ATTORNEY_2_PHONE', 'ATTORNEY_2_EMAIL',
+      'ATTORNEY_2_CITY_STATE_ZIP', 'ATTORNEY_2_PHONE', 'ATTORNEY_2_EMAIL', 'ATTORNEY_2_PRO_HAC',
     ],
   },
   {
@@ -602,6 +603,13 @@ export function buildCascadeFromFacility(facilityId, { facilities, fieldOffices,
     FACILITY_OPERATOR: facility.operator || '',
   };
 
+  // Derive city/state from facility location
+  if (facility.location) {
+    const locParts = facility.location.split(',').map(s => s.trim());
+    vars.FACILITY_CITY = locParts[0] || '';
+    vars.FACILITY_STATE = locParts[locParts.length - 1] || '';
+  }
+
   if (warden) {
     vars.WARDEN_NAME = warden.name;
     vars.WARDEN_TITLE = warden.title;
@@ -625,6 +633,7 @@ export function buildCascadeFromFacility(facilityId, { facilities, fieldOffices,
   if (ice) {
     vars.ICE_DIRECTOR = (ice.actingStatus ? 'Acting ' : '') + ice.name;
     vars.ICE_DIRECTOR_ACTING = ice.actingStatus ? 'yes' : 'no';
+    vars.ICE_DIRECTOR_TITLE = ice.actingStatus ? 'Acting Director' : 'Director';
   }
 
   return { variables: vars, suggestedCourts: possibleCourts, facility, fieldOffice, warden };
@@ -736,8 +745,11 @@ export const SEED_CASES = [
       APPREHENSION_DATE: '2024-10-03',
       CRIMINAL_HISTORY: 'None',
       COMMUNITY_TIES: 'Employed at Riverside Construction for 4 years. Two U.S. citizen children enrolled at Farmville Elementary.',
+      ENTRY_METHOD: 'without inspection',
       DETENTION_FACILITY: 'Farmville Detention Center',
       FACILITY_LOCATION: 'Farmville, VA',
+      FACILITY_CITY: 'Farmville',
+      FACILITY_STATE: 'VA',
       FACILITY_OPERATOR: 'Immigration Centers of America',
       WARDEN_NAME: 'Jeff Crawford',
       WARDEN_TITLE: 'Warden',
@@ -757,20 +769,27 @@ export const SEED_CASES = [
       FIELD_OFFICE_ADDRESS: '2675 Prosperity Ave, Fairfax, VA 22031',
       ICE_DIRECTOR: 'Tom Homan',
       ICE_DIRECTOR_ACTING: 'no',
+      ICE_DIRECTOR_TITLE: 'Director',
       DHS_SECRETARY: 'Kristi Noem',
       AG_NAME: 'Pam Bondi',
       ATTORNEY_1_NAME: 'Katie Soltis',
       ATTORNEY_1_BAR: 'VA 12345',
       ATTORNEY_1_FIRM: 'Amino Immigration Law',
       ATTORNEY_1_ADDR: '123 Main St, Richmond, VA 23219',
+      ATTORNEY_1_CITY_STATE_ZIP: 'Richmond, VA 23219',
       ATTORNEY_1_PHONE: '(804) 555-0123',
+      ATTORNEY_1_FAX: '',
       ATTORNEY_1_EMAIL: 'katie@aminoimmigration.com',
       ATTORNEY_2_NAME: '',
       ATTORNEY_2_BAR: '',
       ATTORNEY_2_FIRM: '',
       ATTORNEY_2_ADDR: '',
+      ATTORNEY_2_CITY_STATE_ZIP: '',
       ATTORNEY_2_PHONE: '',
       ATTORNEY_2_EMAIL: '',
+      ATTORNEY_2_PRO_HAC: '',
+      FILING_DAY: '',
+      FILING_MONTH_YEAR: '',
       AUSA_NAME: '',
       AUSA_OFFICE: '',
       AUSA_PHONE: '',
@@ -815,8 +834,11 @@ export const SEED_CASES = [
       APPREHENSION_DATE: '2024-11-15',
       CRIMINAL_HISTORY: 'None',
       COMMUNITY_TIES: 'Attends local church. Partner is legal permanent resident.',
+      ENTRY_METHOD: 'without inspection',
       DETENTION_FACILITY: 'Stewart Detention Center',
       FACILITY_LOCATION: 'Lumpkin, GA',
+      FACILITY_CITY: 'Lumpkin',
+      FACILITY_STATE: 'GA',
       FACILITY_OPERATOR: 'CoreCivic',
       WARDEN_NAME: 'Michael Davis',
       WARDEN_TITLE: 'Warden',
@@ -836,20 +858,27 @@ export const SEED_CASES = [
       FIELD_OFFICE_ADDRESS: '180 Ted Turner Dr SW, Atlanta, GA 30303',
       ICE_DIRECTOR: 'Tom Homan',
       ICE_DIRECTOR_ACTING: 'no',
+      ICE_DIRECTOR_TITLE: 'Director',
       DHS_SECRETARY: 'Kristi Noem',
       AG_NAME: 'Pam Bondi',
       ATTORNEY_1_NAME: '',
       ATTORNEY_1_BAR: '',
       ATTORNEY_1_FIRM: '',
       ATTORNEY_1_ADDR: '',
+      ATTORNEY_1_CITY_STATE_ZIP: '',
       ATTORNEY_1_PHONE: '',
+      ATTORNEY_1_FAX: '',
       ATTORNEY_1_EMAIL: '',
       ATTORNEY_2_NAME: '',
       ATTORNEY_2_BAR: '',
       ATTORNEY_2_FIRM: '',
       ATTORNEY_2_ADDR: '',
+      ATTORNEY_2_CITY_STATE_ZIP: '',
       ATTORNEY_2_PHONE: '',
       ATTORNEY_2_EMAIL: '',
+      ATTORNEY_2_PRO_HAC: '',
+      FILING_DAY: '',
+      FILING_MONTH_YEAR: '',
       AUSA_NAME: '',
       AUSA_OFFICE: '',
       AUSA_PHONE: '',

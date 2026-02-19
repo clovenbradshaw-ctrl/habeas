@@ -98,24 +98,24 @@
 <!-- PAGE 1: Caption -->
 <section class="page">
   <div class="center court-title">UNITED STATES DISTRICT COURT</div>
-  <div class="center court-title">FOR THE <span class="ph">{{COURT_DISTRICT}}</span></div>
-  <div class="center court-title"><span class="ph">{{COURT_DIVISION}}</span></div>
+  <div class="center court-title">FOR THE <span class="ph">{{DISTRICT_FULL}}</span></div>
+  <div class="center court-title"><span class="ph">{{DIVISION}}</span></div>
 
   <div class="caption-wrap">
     <table class="caption-table">
       <tr>
         <td class="cap-left">
-          <div class="cap-name"><span class="ph">{{PETITIONER_FULL_NAME}}</span>,</div>
+          <div class="cap-name"><span class="ph">{{PETITIONER_NAME}}</span>,</div>
           <div class="cap-centerline" style="margin-top: 18pt;">Petitioner-Plaintiff,</div>
           <div class="cap-v" style="margin-top: 18pt;">v.</div>
 
           <div class="cap-block" style="margin-top: 18pt;">
-            <p><span class="ph">{{WARDEN_NAME}}</span>, in his official capacity as Warden of <span class="ph">{{DETENTION_FACILITY_NAME}}</span>;</p>
-            <p><span class="ph">{{FIELD_OFFICE_DIRECTOR}}</span>, in his official capacity as Field Office Director of the <span class="ph">{{FIELD_OFFICE_NAME}}</span> of Enforcement and Removal Operations, U.S. Immigration and Customs Enforcement;</p>
+            <p><span class="ph">{{WARDEN_NAME}}</span>, in his official capacity as Warden of <span class="ph">{{DETENTION_FACILITY}}</span>;</p>
+            <p><span class="ph">{{FOD_NAME}}</span>, in his official capacity as Field Office Director of the <span class="ph">{{FIELD_OFFICE}}</span> of Enforcement and Removal Operations, U.S. Immigration and Customs Enforcement;</p>
             <p>U.S. Department of Homeland Security;</p>
             <p><span class="ph">{{ICE_DIRECTOR}}</span>, in his official capacity as <span class="ph">{{ICE_DIRECTOR_TITLE}}</span>, Immigration and Customs Enforcement, U.S. Department of Homeland Security;</p>
             <p><span class="ph">{{DHS_SECRETARY}}</span>, in her official capacity as Secretary, U.S. Department of Homeland Security; and</p>
-            <p><span class="ph">{{ATTORNEY_GENERAL}}</span>, in her official capacity as Attorney General of the United States;</p>
+            <p><span class="ph">{{AG_NAME}}</span>, in her official capacity as Attorney General of the United States;</p>
             <p>Respondents-Defendants.</p>
           </div>
         </td>
@@ -139,15 +139,15 @@
 <!-- PAGE 2+: Body -->
 <section class="page">
 <h2 class="section">INTRODUCTION</h2>
-<p class="para numbered">1. Petitioner-Plaintiff <span class="ph">{{PETITIONER_FULL_NAME}}</span> (&quot;Petitioner&quot;) is a citizen of <span class="ph">{{PETITIONER_COUNTRY}}</span> who has resided in the U.S. for <span class="ph">{{PETITIONER_YEARS_IN_US}}</span> years. On information and belief, Immigration and Customs Enforcement (&quot;ICE&quot;) officers apprehended him near his home in <span class="ph">{{PETITIONER_APPREHENSION_LOCATION}}</span>, on or about</p>
-<h2 class="section">{{PETITIONER_APPREHENSION_DATE}}.</h2>
-<p class="para numbered">2. Petitioner is currently detained at the <span class="ph">{{DETENTION_FACILITY_NAME}}</span> in</p>
-<h2 class="section">{{DETENTION_FACILITY_CITY}}, {{DETENTION_FACILITY_STATE}}.</h2>
+<p class="para numbered">1. Petitioner-Plaintiff <span class="ph">{{PETITIONER_NAME}}</span> (&quot;Petitioner&quot;) is a citizen of <span class="ph">{{PETITIONER_COUNTRY}}</span> who has resided in the U.S. for <span class="ph">{{YEARS_RESIDENCE}}</span> years. On information and belief, Immigration and Customs Enforcement (&quot;ICE&quot;) officers apprehended him near his home in <span class="ph">{{APPREHENSION_LOCATION}}</span>, on or about</p>
+<h2 class="section">{{APPREHENSION_DATE}}.</h2>
+<p class="para numbered">2. Petitioner is currently detained at the <span class="ph">{{DETENTION_FACILITY}}</span> in</p>
+<h2 class="section">{{FACILITY_CITY}}, {{FACILITY_STATE}}.</h2>
 <p class="para numbered">3. On September 5, 2025, the Board of Immigration Appeals (&quot;BIA&quot;) issued a precedential decision that unlawfully reinterpreted the Immigration and Nationality Act (&quot;INA&quot;). See Matter of Yajure Hurtado, 29 I&amp;N Dec. 216 (BIA 2025). Prior to this decision, noncitizens like Petitioner who had lived in the U.S. for many years and were apprehended by ICE in the interior of the country were detained pursuant to 8 U.S.C. § 1226(a) and eligible to seek bond hearings before Immigration Judges (&quot;IJs&quot;). Instead, in conflict with nearly thirty years of legal precedent, Petitioner is now considered subject to mandatory detention under 8 U.S.C. § 1225(b)(2)(A) and has no opportunity for release on bond while his removal proceedings are pending.</p>
-<p class="para numbered">4. Petitioner&#x27;s detention pursuant to § 1225(b)(2)(A) violates the plain language of the INA and its implementing regulations. Petitioner, who has resided in the U.S. for nearly <span class="ph">{{PETITIONER_YEARS_IN_US}}</span> years and who was apprehended in the interior of the U.S., should not be considered an &quot;applicant for admission&quot; who is &quot;seeking admission.&quot; Rather, he should be detained pursuant to 8 U.S.C. § 1226(a), which allows for release on conditional parole or bond.</p>
+<p class="para numbered">4. Petitioner&#x27;s detention pursuant to § 1225(b)(2)(A) violates the plain language of the INA and its implementing regulations. Petitioner, who has resided in the U.S. for nearly <span class="ph">{{YEARS_RESIDENCE}}</span> years and who was apprehended in the interior of the U.S., should not be considered an &quot;applicant for admission&quot; who is &quot;seeking admission.&quot; Rather, he should be detained pursuant to 8 U.S.C. § 1226(a), which allows for release on conditional parole or bond.</p>
 <p class="para numbered">5. Petitioner seeks declaratory relief that he is subject to detention under § 1226(a) and its implementing regulations and asks that this Court either order Respondents to release Petitioner from custody or provide him with a bond hearing.</p>
 <h2 class="section">CUSTODY</h2>
-<p class="para numbered">6. Petitioner is currently in the custody of Immigration and Customs Enforcement (&quot;ICE&quot;) at the <span class="ph">{{DETENTION_FACILITY_NAME}}</span> in <span class="ph">{{DETENTION_FACILITY_CITY}}</span>, <span class="ph">{{DETENTION_FACILITY_STATE}}</span>. He is therefore in &quot;&#x27;custody&#x27; of [the DHS] within the meaning of the habeas corpus statute.&quot; Jones v. Cunningham, 371 U.S. 236, 243 (1963).</p>
+<p class="para numbered">6. Petitioner is currently in the custody of Immigration and Customs Enforcement (&quot;ICE&quot;) at the <span class="ph">{{DETENTION_FACILITY}}</span> in <span class="ph">{{FACILITY_CITY}}</span>, <span class="ph">{{FACILITY_STATE}}</span>. He is therefore in &quot;&#x27;custody&#x27; of [the DHS] within the meaning of the habeas corpus statute.&quot; Jones v. Cunningham, 371 U.S. 236, 243 (1963).</p>
 <h2 class="section">JURISDICTION</h2>
 <p class="para numbered">7. This court has jurisdiction under 28 U.S.C. § 2241 (habeas corpus), 28 U.S.C. § 1331 (federal question), Article I, § 9, cl. 2 of the United States Constitution (Suspension Clause), and the Immigration and Nationality Act (&quot;INA&quot;), 8 U.S.C. § 1101 et seq.</p>
 <p class="para numbered">8. This Court may grant relief under the habeas corpus statutes, 28 U.S.C. § 2241 et seq., the Declaratory Judgment Act, 28 U.S.C. § 2201 et seq., the All Writs Act, 28 U.S.C. § 1651, and the Immigration and Nationality Act, 8 U.S.C. § 1252(e)(2).</p>
@@ -157,20 +157,20 @@
 <p class="para numbered">2243. If an OSC is issued, the Court must require Respondents to file a return &quot;within three days unless for good cause additional time, not exceeding twenty days, is allowed.&quot; Id.</p>
 <p class="para numbered">11. Petitioner is &quot;in custody&quot; for the purpose of § 2241 because Petitioner is arrested and detained by Respondents.</p>
 <h2 class="section">VENUE</h2>
-<p class="para numbered">12. Venue is properly before this Court pursuant to 28 U.S.C. § 1391(e) because Respondents are employees or officers of the United States acting in their official capacity and because a substantial part of the events or omissions giving rise to the claim occurred in the <span class="ph">{{COURT_DISTRICT}}</span>. Petitioner is under the jurisdiction of ICE&#x27;s <span class="ph">{{FIELD_OFFICE_NAME}}</span>, and he is currently detained at the <span class="ph">{{DETENTION_FACILITY_NAME}}</span> in <span class="ph">{{DETENTION_FACILITY_CITY}}</span>,</p>
-<h2 class="section">{{DETENTION_FACILITY_STATE}}.</h2>
+<p class="para numbered">12. Venue is properly before this Court pursuant to 28 U.S.C. § 1391(e) because Respondents are employees or officers of the United States acting in their official capacity and because a substantial part of the events or omissions giving rise to the claim occurred in the <span class="ph">{{DISTRICT_FULL}}</span>. Petitioner is under the jurisdiction of ICE&#x27;s <span class="ph">{{FIELD_OFFICE}}</span>, and he is currently detained at the <span class="ph">{{DETENTION_FACILITY}}</span> in <span class="ph">{{FACILITY_CITY}}</span>,</p>
+<h2 class="section">{{FACILITY_STATE}}.</h2>
 <h2 class="section">EXHAUSTION OF ADMINISTRATIVE REMEDIES</h2>
 <p class="para numbered">13. Administrative exhaustion is unnecessary as it would be futile. See, e.g., Aguilar v. Lewis, 50 F. Supp. 2d 539, 542–43 (E.D. Va. 1999).</p>
 <p class="para numbered">14. It would be futile for Petitioner to seek a custody redetermination hearing before an IJ due to the BIA&#x27;s recent decision holding that anyone who has entered the U.S. without inspection is now considered an &quot;applicant for admission&quot; who is &quot;seeking admission&quot; and therefore subject to mandatory detention under § 1225(b)(2)(A). See Matter of Yajure Hurtado, 29 I&amp;N Dec. 216 (BIA 2025); see also Zaragoza Mosqueda v. Noem, 2025 WL 2591530, at *7 (C.D. Cal. Sept. 8, 2025) (noting that BIA&#x27;s decision in Yajure Hurtado renders exhaustion futile).</p>
 <p class="para numbered">15. Additionally, the agency does not have jurisdiction to review Petitioner&#x27;s claim of unlawful custody in violation of his due process rights, and it would therefore be futile for him to pursue administrative remedies. Reno v. Amer.-Arab Anti-Discrim. Comm., 525 U.S. 471, 119 S.Ct. 936, 142 L.Ed.2d 940 (1999) (finding exhaustion to be a &quot;futile exercise because the agency does not have jurisdiction to review&quot; constitutional claims).</p>
 <h2 class="section">PARTIES</h2>
-<p class="para numbered">16. Petitioner <span class="ph">{{PETITIONER_FULL_NAME}}</span> is from <span class="ph">{{PETITIONER_COUNTRY}}</span> and has resided in the U.S. since <span class="ph">{{PETITIONER_ENTRY_DATE}}</span>. He is currently detained in the</p>
-<h2 class="section">{{DETENTION_FACILITY_NAME}}.</h2>
-<p class="para numbered">17. Respondent <span class="ph">{{WARDEN_NAME}}</span> is sued in his official capacity as Warden of the <span class="ph">{{DETENTION_FACILITY_NAME}}</span>. In his official capacity, <span class="ph">{{WARDEN_NAME}}</span> is Petitioner&#x27;s immediate custodian.</p>
-<p class="para numbered">18. Respondent <span class="ph">{{FIELD_OFFICE_DIRECTOR}}</span> is sued in his official capacity as Field Office Director, <span class="ph">{{FIELD_OFFICE_NAME}}</span>, Enforcement and Removal Operations, U.S. Immigration &amp; Customs Enforcement (&quot;ICE&quot;). In his official capacity, Respondent <span class="ph">{{FIELD_OFFICE_DIRECTOR}}</span> is the legal custodian of Petitioner.</p>
+<p class="para numbered">16. Petitioner <span class="ph">{{PETITIONER_NAME}}</span> is from <span class="ph">{{PETITIONER_COUNTRY}}</span> and has resided in the U.S. since <span class="ph">{{ENTRY_DATE}}</span>. He is currently detained in the</p>
+<h2 class="section">{{DETENTION_FACILITY}}.</h2>
+<p class="para numbered">17. Respondent <span class="ph">{{WARDEN_NAME}}</span> is sued in his official capacity as Warden of the <span class="ph">{{DETENTION_FACILITY}}</span>. In his official capacity, <span class="ph">{{WARDEN_NAME}}</span> is Petitioner&#x27;s immediate custodian.</p>
+<p class="para numbered">18. Respondent <span class="ph">{{FOD_NAME}}</span> is sued in his official capacity as Field Office Director, <span class="ph">{{FIELD_OFFICE}}</span>, Enforcement and Removal Operations, U.S. Immigration &amp; Customs Enforcement (&quot;ICE&quot;). In his official capacity, Respondent <span class="ph">{{FOD_NAME}}</span> is the legal custodian of Petitioner.</p>
 <p class="para numbered">19. Respondent <span class="ph">{{ICE_DIRECTOR}}</span> is sued in his official capacity as <span class="ph">{{ICE_DIRECTOR_TITLE}}</span> of ICE. As the <span class="ph">{{ICE_DIRECTOR_TITLE}}</span> of ICE, Respondent <span class="ph">{{ICE_DIRECTOR}}</span> is a legal custodian of Petitioner.</p>
 <p class="para numbered">20. Respondent <span class="ph">{{DHS_SECRETARY}}</span> is sued in her official capacity as Secretary of Homeland Security. As the head of the Department of Homeland Security, the agency tasked with enforcing immigration laws, Secretary <span class="ph">{{DHS_SECRETARY}}</span> is Petitioner&#x27;s ultimate legal custodian.</p>
-<p class="para numbered">21. Respondent <span class="ph">{{ATTORNEY_GENERAL}}</span> is sued in her official capacity as the Attorney General of the United States. As Attorney General, she has authority over the Department of Justice and is charged with faithfully administering the immigration laws of the United States.</p>
+<p class="para numbered">21. Respondent <span class="ph">{{AG_NAME}}</span> is sued in her official capacity as the Attorney General of the United States. As Attorney General, she has authority over the Department of Justice and is charged with faithfully administering the immigration laws of the United States.</p>
 <h2 class="section">LEGAL BACKGROUND AND ARGUMENT</h2>
 <p class="para numbered">22. The INA prescribes three basic forms of detention for noncitizens in removal proceedings.</p>
 <p class="para numbered">23. First, individuals detained pursuant to 8 U.S.C. § 1226(a) are generally entitled to a bond hearing, unless they have been arrested, charged with, or convicted of certain crimes and are subject to mandatory detention. See 8 U.S.C. §§ 1226(a), 1226(c) (listing grounds for mandatory detention); see also 8 C.F.R. §§ 1003.19(a) (immigration judges may review custody determinations made by DHS), 1236.1(d) (same).</p>
@@ -190,11 +190,11 @@
 <p class="para numbered">37. Accordingly, the mandatory detention provision of § 1225(b)(2) does not apply to Petitioner, who entered the U.S. years before he was apprehended.</p>
 <h2 class="section">STATEMENT OF FACTS</h2>
 <p class="para numbered">38. Petitioner is a citizen of <span class="ph">{{PETITIONER_COUNTRY}}</span>.</p>
-<p class="para numbered">39. On information and belief, Petitioner entered the U.S. <span class="ph">{{PETITIONER_ENTRY_METHOD}}</span> in <span class="ph">{{PETITIONER_ENTRY_DATE}}</span>, and he has resided in the U.S. since then.</p>
-<p class="para numbered">40. On information and belief, Petitioner <span class="ph">{{PETITIONER_CRIMINAL_HISTORY}}</span>.</p>
-<p class="para numbered">41. On information and belief, Petitioner was arrested by immigration authorities in <span class="ph">{{PETITIONER_APPREHENSION_LOCATION}}</span> on</p>
-<h2 class="section">{{PETITIONER_APPREHENSION_DATE}}.</h2>
-<p class="para numbered">42. He is now detained at the <span class="ph">{{DETENTION_FACILITY_NAME}}</span>.</p>
+<p class="para numbered">39. On information and belief, Petitioner entered the U.S. <span class="ph">{{ENTRY_METHOD}}</span> in <span class="ph">{{ENTRY_DATE}}</span>, and he has resided in the U.S. since then.</p>
+<p class="para numbered">40. On information and belief, Petitioner <span class="ph">{{CRIMINAL_HISTORY}}</span>.</p>
+<p class="para numbered">41. On information and belief, Petitioner was arrested by immigration authorities in <span class="ph">{{APPREHENSION_LOCATION}}</span> on</p>
+<h2 class="section">{{APPREHENSION_DATE}}.</h2>
+<p class="para numbered">42. He is now detained at the <span class="ph">{{DETENTION_FACILITY}}</span>.</p>
 <p class="para numbered">43. Without relief from this Court, he faces the prospect of continued detention without any access to a bond hearing.</p>
 <h2 class="section">COUNT I</h2>
 <p class="para">Violation of 8 U.S.C. § 1226(a) Unlawful Denial of Release on Bond</p>
@@ -215,33 +215,33 @@
 <p class="para numbered">54. The Supreme Court has repeatedly emphasized that the Constitution generally requires a hearing before the government deprives a person of liberty or property. Zinermon v. Burch, 494 U.S. 113, 127 (1990).</p>
 <p class="para numbered">55. Under the Mathews v. Eldridge framework, the balance of interests strongly favors Petitioner&#x27;s release.</p>
 <p class="para numbered">56. Petitioner&#x27;s private interest in freedom from detention is profound. The interest in being free from physical detention is &quot;the most elemental of liberty interests.&quot; Hamdi v. Rumsfeld, 542 U.S. 507, 529 (2004); see also Zadvydas v. Davis, 533 U.S. 678, 690 (2001) (&quot;Freedom from imprisonment—from government custody, detention, or other forms of physical restraint—lies at the heart of the liberty that [the Due Process] Clause protects.&quot;).</p>
-<p class="para numbered">57. The risk of erroneous deprivation is exceptionally high. Petitioner <span class="ph">{{PETITIONER_CRIMINAL_HISTORY}}</span> and</p>
-<h2 class="section">{{PETITIONER_COMMUNITY_TIES}}.</h2>
+<p class="para numbered">57. The risk of erroneous deprivation is exceptionally high. Petitioner <span class="ph">{{CRIMINAL_HISTORY}}</span> and</p>
+<h2 class="section">{{COMMUNITY_TIES}}.</h2>
 <p class="para numbered">58. The government&#x27;s interest in detaining Petitioner without due process is minimal. Immigration detention is civil, not punitive, and may only be used to prevent danger to the community or ensure appearance at immigration proceedings. See Zadvydas, 533 U.S. at 690.</p>
 <p class="para numbered">59. Furthermore, the &quot;fiscal and administrative burdens&quot; of providing Petitioner with a bond hearing are minimal, particularly when weighed against the significant liberty interests at stake. See Mathews, 424 U.S. at 334–35.</p>
 <p class="para numbered">60. Considering these factors, Petitioner respectfully requests that this Court order his immediate release from custody or provide him with a bond hearing.</p>
 <h2 class="section">PRAYER FOR RELIEF</h2>
-<p class="para">WHEREFORE, Petitioner prays that this Court will: (1) Assume jurisdiction over this matter; (2) Set this matter for expedited consideration; (3) Order that Petitioner not be transferred outside of this District; (4) Issue an Order to Show Cause ordering Respondents to show cause why this Petition should not be granted within three days; (5) Declare that Petitioner&#x27;s detention is unlawful; (6) Issue a Writ of Habeas Corpus ordering Respondents to release Petitioner from custody or provide him with a bond hearing pursuant to 8 U.S.C. § 1226(a) or the Due Process Clause within seven days; (7) Award Petitioner attorney&#x27;s fees and costs under the Equal Access to Justice Act, and on any other basis justified under law; and (8) Grant any further relief this Court deems just and proper. Date: <span class="ph">{{FILING_DATE}}</span> Respectfully Submitted, /s/ <span class="ph">{{ATTORNEY1_NAME}}</span></p>
-<h2 class="section">{{ATTORNEY1_NAME}}</h2>
-<h2 class="section">{{ATTORNEY1_BAR_NO}}</h2>
-<h2 class="section">{{ATTORNEY1_FIRM}}</h2>
-<h2 class="section">{{ATTORNEY1_ADDRESS}}</h2>
-<h2 class="section">{{ATTORNEY1_CITY_STATE_ZIP}}</h2>
-<p class="para"><span class="ph">{{ATTORNEY1_PHONE}}</span> (phone) <span class="ph">{{ATTORNEY1_FAX}}</span> (fax)</p>
-<h2 class="section">{{ATTORNEY1_EMAIL}}</h2>
-<p class="para">/s/ <span class="ph">{{ATTORNEY2_NAME}}</span></p>
-<h2 class="section">{{ATTORNEY2_NAME}}</h2>
-<h2 class="section">{{ATTORNEY2_BAR_NO}}*</h2>
-<h2 class="section">{{ATTORNEY2_FIRM}}</h2>
-<h2 class="section">{{ATTORNEY2_ADDRESS}}</h2>
-<h2 class="section">{{ATTORNEY2_CITY_STATE_ZIP}}</h2>
-<p class="para"><span class="ph">{{ATTORNEY2_PHONE}}</span> (phone)</p>
-<h2 class="section">{{ATTORNEY2_EMAIL}}</h2>
-<h2 class="section">{{ATTORNEY2_PRO_HAC}}</h2>
+<p class="para">WHEREFORE, Petitioner prays that this Court will: (1) Assume jurisdiction over this matter; (2) Set this matter for expedited consideration; (3) Order that Petitioner not be transferred outside of this District; (4) Issue an Order to Show Cause ordering Respondents to show cause why this Petition should not be granted within three days; (5) Declare that Petitioner&#x27;s detention is unlawful; (6) Issue a Writ of Habeas Corpus ordering Respondents to release Petitioner from custody or provide him with a bond hearing pursuant to 8 U.S.C. § 1226(a) or the Due Process Clause within seven days; (7) Award Petitioner attorney&#x27;s fees and costs under the Equal Access to Justice Act, and on any other basis justified under law; and (8) Grant any further relief this Court deems just and proper. Date: <span class="ph">{{FILING_DATE}}</span> Respectfully Submitted, /s/ <span class="ph">{{ATTORNEY_1_NAME}}</span></p>
+<h2 class="section">{{ATTORNEY_1_NAME}}</h2>
+<h2 class="section">{{ATTORNEY_1_BAR}}</h2>
+<h2 class="section">{{ATTORNEY_1_FIRM}}</h2>
+<h2 class="section">{{ATTORNEY_1_ADDR}}</h2>
+<h2 class="section">{{ATTORNEY_1_CITY_STATE_ZIP}}</h2>
+<p class="para"><span class="ph">{{ATTORNEY_1_PHONE}}</span> (phone) <span class="ph">{{ATTORNEY_1_FAX}}</span> (fax)</p>
+<h2 class="section">{{ATTORNEY_1_EMAIL}}</h2>
+<p class="para">/s/ <span class="ph">{{ATTORNEY_2_NAME}}</span></p>
+<h2 class="section">{{ATTORNEY_2_NAME}}</h2>
+<h2 class="section">{{ATTORNEY_2_BAR}}*</h2>
+<h2 class="section">{{ATTORNEY_2_FIRM}}</h2>
+<h2 class="section">{{ATTORNEY_2_ADDR}}</h2>
+<h2 class="section">{{ATTORNEY_2_CITY_STATE_ZIP}}</h2>
+<p class="para"><span class="ph">{{ATTORNEY_2_PHONE}}</span> (phone)</p>
+<h2 class="section">{{ATTORNEY_2_EMAIL}}</h2>
+<h2 class="section">{{ATTORNEY_2_PRO_HAC}}</h2>
 <p class="para">Attorneys for Petitioner</p>
 <h2 class="section">VERIFICATION PURSUANT TO 28 U.S.C. § 2242</h2>
-<p class="para">I represent Petitioner, <span class="ph">{{PETITIONER_FULL_NAME}}</span>, and submit this verification on his behalf. I hereby verify that the factual statements made in the foregoing Petition for Writ of Habeas Corpus are true and correct to the best of my knowledge. Dated this <span class="ph">{{FILING_DAY}}</span> day of <span class="ph">{{FILING_MONTH_YEAR}}</span>. /s/ <span class="ph">{{ATTORNEY2_NAME}}</span></p>
-<h2 class="section">{{ATTORNEY2_NAME}}</h2>
+<p class="para">I represent Petitioner, <span class="ph">{{PETITIONER_NAME}}</span>, and submit this verification on his behalf. I hereby verify that the factual statements made in the foregoing Petition for Writ of Habeas Corpus are true and correct to the best of my knowledge. Dated this <span class="ph">{{FILING_DAY}}</span> day of <span class="ph">{{FILING_MONTH_YEAR}}</span>. /s/ <span class="ph">{{ATTORNEY_2_NAME}}</span></p>
+<h2 class="section">{{ATTORNEY_2_NAME}}</h2>
 <p class="para">Attorney for Petitioner Appearing Pro Hac Vice</p>
 
 </section>
