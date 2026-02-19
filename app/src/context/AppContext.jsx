@@ -3,6 +3,7 @@ import { SEED_CASES, SEED_PIPELINE_EXTRA, SEED_TEMPLATES, SEED_REF_DATA, SEED_US
 import * as mx from '../lib/matrix';
 
 const AppContext = createContext(null);
+const DEFAULT_TEMPLATE_ID = 'tpl_hc_general';
 
 const SCREENS = {
   LOGIN: 'login',
@@ -402,13 +403,28 @@ export function AppProvider({ children }) {
 
   const createCase = useCallback(async (caseData) => {
     const id = `case_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const defaultTemplate = stateRef.current.templates.find((template) => template.id === DEFAULT_TEMPLATE_ID);
 
     // Auto-populate documents from doc types if none provided
     let documents = caseData.documents || [];
     if (documents.length === 0) {
-      const docTypes = stateRef.current.refData?.doc_type || [];
-      if (docTypes.length > 0) {
-        documents = getDefaultDocuments(docTypes, stateRef.current.templates);
+      if (defaultTemplate) {
+        documents = [{
+          id: `doc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          templateId: defaultTemplate.id,
+          name: defaultTemplate.name,
+          status: 'draft',
+          variableOverrides: {},
+          sections: [],
+          renderMode: defaultTemplate.renderMode || 'html_semantic',
+          sourceHtml: defaultTemplate.sourceHtml || null,
+          sourceText: defaultTemplate.sourceText || null,
+        }];
+      } else {
+        const docTypes = stateRef.current.refData?.doc_type || [];
+        if (docTypes.length > 0) {
+          documents = getDefaultDocuments(docTypes, stateRef.current.templates);
+        }
       }
     }
 
@@ -446,6 +462,7 @@ export function AppProvider({ children }) {
 
     const newCase = {
       id, ...caseData,
+      templateId: caseData.templateId || defaultTemplate?.id || null,
       owner: mx.getUserId() || stateRef.current.user?.userId,
       lastUpdated: new Date().toISOString(),
       documents,
@@ -887,35 +904,9 @@ async function loadRemoteData(dispatch, role) {
     ]);
     // Templates are shared with all users; ensure seeded repo templates are always available and active.
     if (templates.status === 'fulfilled') {
-      const remoteTemplates = templates.value || [];
-      const existing = new Map(remoteTemplates.map(t => [t.id, t]));
-      for (const seedTemplate of SEED_TEMPLATES) {
-        if (!existing.has(seedTemplate.id)) {
-          existing.set(seedTemplate.id, seedTemplate);
-          continue;
-        }
-
-        // Keep canonical seeded templates visible to everyone in the template library.
-        const merged = {
-          ...existing.get(seedTemplate.id),
-          archived: false,
-        };
-
-        if (seedTemplate.id === 'tpl_hc_general') {
-          // Keep the primary habeas petition template fully canonical for all users.
-          Object.assign(merged, {
-            ...seedTemplate,
-            archived: false,
-            docs: merged.docs ?? seedTemplate.docs,
-            lastUsed: merged.lastUsed ?? seedTemplate.lastUsed,
-          });
-        }
-
-        existing.set(seedTemplate.id, merged);
-      }
-      dispatch({ type: 'SET_TEMPLATES', templates: Array.from(existing.values()) });
+      dispatch({ type: 'SET_TEMPLATES', templates: mergeTemplatesWithSeed(templates.value || []) });
     } else {
-      dispatch({ type: 'SET_TEMPLATES', templates: [...SEED_TEMPLATES] });
+      dispatch({ type: 'SET_TEMPLATES', templates: mergeTemplatesWithSeed([]) });
     }
     if (refData.status === 'fulfilled') {
       dispatch({ type: 'SET_REF_DATA', refData: refData.value });
@@ -941,6 +932,23 @@ async function loadRemoteData(dispatch, role) {
 function getDocReadiness(documents) {
   if (!documents || documents.length === 0) return { ready: 0, total: 0 };
   return { ready: documents.filter(d => d.status === 'ready' || d.status === 'filed').length, total: documents.length };
+}
+
+function mergeTemplatesWithSeed(remoteTemplates) {
+  const filteredRemote = (remoteTemplates || []).filter((template) => template.id !== DEFAULT_TEMPLATE_ID);
+  const uniqueRemoteById = new Map(filteredRemote.map((template) => [template.id, template]));
+  const pinnedSeedTemplates = SEED_TEMPLATES.map((seedTemplate) => {
+    if (seedTemplate.id === DEFAULT_TEMPLATE_ID) {
+      return { ...seedTemplate, archived: false };
+    }
+
+    const remote = uniqueRemoteById.get(seedTemplate.id);
+    if (!remote) return { ...seedTemplate, archived: false };
+    uniqueRemoteById.delete(seedTemplate.id);
+    return { ...remote, ...seedTemplate, archived: false };
+  });
+
+  return [...pinnedSeedTemplates, ...Array.from(uniqueRemoteById.values())];
 }
 
 function extractTemplateVariableKeys(template) {

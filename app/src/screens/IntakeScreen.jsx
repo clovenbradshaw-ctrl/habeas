@@ -7,6 +7,7 @@ const STEPS = [
   { num: 2, label: 'Detention Details' },
   { num: 3, label: 'Assign Documents' },
 ];
+const DEFAULT_TEMPLATE_ID = 'tpl_hc_general';
 
 export default function IntakeScreen() {
   const { state, navigate, createCase, openCase, showToast } = useApp();
@@ -50,16 +51,24 @@ export default function IntakeScreen() {
 
   // Suggested templates based on statute
   const suggestedTemplates = useMemo(() => {
-    return state.templates.map(t => ({
+    const activeTemplates = state.templates.filter((template) => !template.archived);
+    const sorted = [...activeTemplates].sort((a, b) => {
+      if (a.id === DEFAULT_TEMPLATE_ID) return -1;
+      if (b.id === DEFAULT_TEMPLATE_ID) return 1;
+      return (b.lastUsed || 0) - (a.lastUsed || 0);
+    });
+
+    return sorted.map(t => ({
       ...t,
       suggested: true, // In a full impl, this would be based on statute mapping
     }));
   }, [state.templates, statuteId]);
 
-  // Initialize selected templates with first 4 on mount
+  // Initialize selected templates with built-in template on mount
   useMemo(() => {
     if (selectedTemplates.size === 0 && suggestedTemplates.length > 0) {
-      setSelectedTemplates(new Set(suggestedTemplates.slice(0, 4).map(t => t.id)));
+      const defaults = suggestedTemplates.filter((template) => template.id === DEFAULT_TEMPLATE_ID).map((template) => template.id);
+      setSelectedTemplates(new Set(defaults.length > 0 ? defaults : [suggestedTemplates[0].id]));
     }
   }, [suggestedTemplates]);
 

@@ -9,6 +9,7 @@ const CATEGORIES = [
   { id: 'filing', label: 'Filing Docs' },
   { id: 'brief', label: 'Briefs' },
 ];
+const BUILT_IN_TEMPLATE_IDS = new Set(['tpl_hc_general']);
 
 export default function TemplatesScreen() {
   const { state, openTemplate, openCase, showToast, createTemplate, forkTemplate, deleteTemplate, archiveTemplate, unarchiveTemplate, addDocToCase } = useApp();
@@ -335,7 +336,14 @@ export default function TemplatesScreen() {
           <div key={t.id} className="bg-white border border-gray-200 rounded-[14px] px-5 py-4 hover:border-blue-300 hover:shadow-sm transition-all">
             <div className="flex items-start justify-between">
               <div className="flex-1 min-w-0">
-                <div className="text-[0.95rem] font-semibold text-gray-900">{t.name}</div>
+                <div className="flex items-center gap-2">
+                  <div className="text-[0.95rem] font-semibold text-gray-900">{t.name}</div>
+                  {BUILT_IN_TEMPLATE_IDS.has(t.id) && (
+                    <span className="text-[0.65rem] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-200">
+                      Built-in
+                    </span>
+                  )}
+                </div>
                 <div className="text-[0.78rem] text-gray-500 mt-0.5">{t.desc}</div>
                 {t.parentId && (
                   <div className="text-[0.72rem] text-purple-500 mt-0.5">
@@ -352,6 +360,7 @@ export default function TemplatesScreen() {
                 {showArchived ? (
                   <button
                     onClick={() => unarchiveTemplate(t.id)}
+                    disabled={BUILT_IN_TEMPLATE_IDS.has(t.id)}
                     className="text-[0.75rem] font-semibold px-3 py-[5px] rounded-md bg-blue-500 text-white hover:bg-blue-600"
                   >
                     Restore
@@ -370,18 +379,22 @@ export default function TemplatesScreen() {
                     >
                       Fork
                     </button>
-                    <button
-                      onClick={() => archiveTemplate(t.id)}
-                      className="text-[0.75rem] font-semibold px-3 py-[5px] rounded-md border border-gray-200 text-gray-500 hover:border-gray-400"
-                    >
-                      Archive
-                    </button>
-                    <button
-                      onClick={() => handleDeleteTemplate(t.id)}
-                      className="text-[0.75rem] font-semibold px-3 py-[5px] rounded-md border border-gray-200 text-gray-500 hover:border-gray-400"
-                    >
-                      Delete
-                    </button>
+                    {!BUILT_IN_TEMPLATE_IDS.has(t.id) && (
+                      <>
+                        <button
+                          onClick={() => archiveTemplate(t.id)}
+                          className="text-[0.75rem] font-semibold px-3 py-[5px] rounded-md border border-gray-200 text-gray-500 hover:border-gray-400"
+                        >
+                          Archive
+                        </button>
+                        <button
+                          onClick={() => handleDeleteTemplate(t.id)}
+                          className="text-[0.75rem] font-semibold px-3 py-[5px] rounded-md border border-gray-200 text-gray-500 hover:border-gray-400"
+                        >
+                          Delete
+                        </button>
+                      </>
+                    )}
                     <button
                       onClick={() => setUseCaseTarget(t)}
                       className="text-[0.75rem] font-semibold px-3 py-[5px] rounded-md bg-blue-500 text-white hover:bg-blue-600"
