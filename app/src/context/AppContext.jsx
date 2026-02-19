@@ -229,8 +229,10 @@ function reducer(state, action) {
     case 'ADD_TEMPLATE':
       return { ...state, templates: [...state.templates, action.template] };
     case 'DELETE_TEMPLATE':
+      if (action.templateId === DEFAULT_TEMPLATE_ID) return state;
       return { ...state, templates: state.templates.filter(t => t.id !== action.templateId) };
     case 'ARCHIVE_TEMPLATE': {
+      if (action.templateId === DEFAULT_TEMPLATE_ID) return state;
       const templates = state.templates.map(t => t.id === action.templateId ? { ...t, archived: true } : t);
       return { ...state, templates };
     }
@@ -672,6 +674,7 @@ export function AppProvider({ children }) {
   }, []);
 
   const deleteTemplate = useCallback(async (templateId) => {
+    if (templateId === DEFAULT_TEMPLATE_ID) return;
     dispatch({ type: 'DELETE_TEMPLATE', templateId });
     if (connectedRef.current) {
       try { await mx.deleteTemplate(templateId); } catch (e) { console.warn(e); }
@@ -709,6 +712,7 @@ export function AppProvider({ children }) {
   }, [showToast]);
 
   const archiveTemplate = useCallback(async (templateId) => {
+    if (templateId === DEFAULT_TEMPLATE_ID) return;
     dispatch({ type: 'ARCHIVE_TEMPLATE', templateId });
     if (connectedRef.current) {
       const tpl = stateRef.current.templates.find(t => t.id === templateId);
