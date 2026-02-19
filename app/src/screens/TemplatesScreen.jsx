@@ -10,6 +10,7 @@ const CATEGORIES = [
   { id: 'brief', label: 'Briefs' },
 ];
 const BUILT_IN_TEMPLATE_IDS = new Set(['tpl_hc_general']);
+const PRIMARY_TEMPLATE_ID = 'tpl_hc_general';
 
 export default function TemplatesScreen() {
   const { state, openTemplate, openCase, showToast, createTemplate, forkTemplate, deleteTemplate, archiveTemplate, unarchiveTemplate, addDocToCase } = useApp();
@@ -64,14 +65,21 @@ export default function TemplatesScreen() {
   async function handleCreateTemplate(e) {
     e.preventDefault();
     if (!newTplName.trim()) return;
+    const primaryTemplate = state.templates.find((template) => template.id === PRIMARY_TEMPLATE_ID);
+    const primarySections = primaryTemplate?.sections?.map((section) => ({ ...section })) || null;
+    const primaryVariables = primaryTemplate?.variables ? [...primaryTemplate.variables] : null;
     const id = await createTemplate({
       name: newTplName.trim(),
       category: newTplCategory,
       desc: newTplDesc.trim(),
-      sections: [
+      sections: primarySections || [
         { id: `s_${Date.now()}`, name: 'Introduction', required: true, paraCount: 1, content: '' },
       ],
-      variables: [],
+      variables: primaryVariables || [],
+      sourceHtml: primaryTemplate?.sourceHtml || null,
+      sourceText: primaryTemplate?.sourceText || null,
+      renderMode: primaryTemplate?.renderMode || 'html_semantic',
+      parentId: primaryTemplate?.id || null,
     });
     setShowNewTemplate(false);
     setNewTplName('');
