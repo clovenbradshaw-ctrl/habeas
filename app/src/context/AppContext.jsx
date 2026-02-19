@@ -441,7 +441,8 @@ export function AppProvider({ children }) {
       }
     }
 
-    const variables = { ...cascadeVars, ...caseData.variables };
+    const templateVars = collectTemplateVariablesForDocuments(documents, stateRef.current.templates);
+    const variables = { ...templateVars, ...cascadeVars, ...caseData.variables };
 
     const newCase = {
       id, ...caseData,
@@ -553,12 +554,22 @@ export function AppProvider({ children }) {
   const addDocToCase = useCallback(async (caseId, template) => {
     const docId = `doc_${Date.now()}`;
     const doc = { id: docId, templateId: template.id, name: template.name, status: 'draft', variableOverrides: {}, sections: [], renderMode: template.renderMode || 'html_semantic', sourceHtml: template.sourceHtml || null, sourceText: template.sourceText || null };
+    const templateVars = buildVariableRecordFromTemplate(template);
     dispatch({ type: 'ADD_DOCUMENT_TO_CASE', caseId, doc });
+    if (Object.keys(templateVars).length > 0) {
+      dispatch({ type: 'MERGE_CASE_VARIABLES', caseId, variables: templateVars });
+    }
     if (connectedRef.current) {
       try {
         await mx.saveCaseDocument(caseId, docId, doc);
         const c = stateRef.current.cases.find(x => x.id === caseId);
-        if (c) await mx.saveCaseMetadata(caseId, { ...c, docReadiness: getDocReadiness([...(c.documents || []), doc]) });
+        if (c) {
+          await mx.saveCaseMetadata(caseId, { ...c, docReadiness: getDocReadiness([...(c.documents || []), doc]) });
+          if (Object.keys(templateVars).length > 0) {
+            const mergedVariables = { ...(c.variables || {}), ...templateVars };
+            await mx.saveCaseVariables(caseId, mergedVariables);
+          }
+        }
       } catch (e) { console.warn(e); }
     }
     return docId;
@@ -925,6 +936,30 @@ async function loadRemoteData(dispatch, role) {
 function getDocReadiness(documents) {
   if (!documents || documents.length === 0) return { ready: 0, total: 0 };
   return { ready: documents.filter(d => d.status === 'ready' || d.status === 'filed').length, total: documents.length };
+}
+
+function extractTemplateVariableKeys(template) {
+  if (!template) return [];
+  const sectionVariables = (template.sections || []).flatMap((section) =>
+    Array.from((section.content || '').matchAll(/\{\{([A-Z_0-9]+)\}\}/g)).map((match) => match[1]),
+  );
+  const htmlVariables = Array.from((template.sourceHtml || '').matchAll(/\{\{([A-Z_0-9]+)\}\}/g)).map((match) => match[1]);
+  const textVariables = Array.from((template.sourceText || '').matchAll(/\{\{([A-Z_0-9]+)\}\}/g)).map((match) => match[1]);
+  return Array.from(new Set([...(template.variables || []), ...sectionVariables, ...htmlVariables, ...textVariables]));
+}
+
+function buildVariableRecordFromTemplate(template) {
+  return Object.fromEntries(extractTemplateVariableKeys(template).map((key) => [key, '']));
+}
+
+function collectTemplateVariablesForDocuments(documents, templates) {
+  const templateById = new Map((templates || []).map((template) => [template.id, template]));
+  return (documents || []).reduce((acc, doc) => {
+    if (!doc.templateId) return acc;
+    const template = templateById.get(doc.templateId);
+    if (!template) return acc;
+    return { ...acc, ...buildVariableRecordFromTemplate(template) };
+  }, {});
 }
 
 export function useApp() {
