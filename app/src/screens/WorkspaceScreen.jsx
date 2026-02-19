@@ -73,6 +73,7 @@ export default function WorkspaceScreen() {
   const [importLoading, setImportLoading] = useState(false);
   const [showNewVarForm, setShowNewVarForm] = useState(false);
   const [varSearch, setVarSearch] = useState('');
+  const [docViewMode, setDocViewMode] = useState('fill');
   const [newVarName, setNewVarName] = useState('');
   const [newVarValue, setNewVarValue] = useState('');
   const [showSharePanel, setShowSharePanel] = useState(false);
@@ -643,6 +644,7 @@ export default function WorkspaceScreen() {
               doc={selectedDoc}
               template={docTemplate}
               variables={effectiveVars}
+              mode={docViewMode}
               onInsertVariable={handleInsertVariable}
               onContentChange={(content) => updateDocContent(activeCase.id, selectedDoc.id, content)}
             />
@@ -750,6 +752,20 @@ export default function WorkspaceScreen() {
                     Edit Fields
                   </span>
                   <span className="text-[0.68rem] font-semibold text-gray-400">{filledVars.length}/{allVarKeys.length}</span>
+                </div>
+                <div className="mb-2 inline-flex w-full rounded-md border border-gray-200 bg-gray-50 p-0.5">
+                  <button
+                    onClick={() => setDocViewMode('fill')}
+                    className={`flex-1 rounded px-2 py-1 text-[0.66rem] font-semibold transition-colors ${docViewMode === 'fill' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    Fill Variables
+                  </button>
+                  <button
+                    onClick={() => setDocViewMode('preview')}
+                    className={`flex-1 rounded px-2 py-1 text-[0.66rem] font-semibold transition-colors ${docViewMode === 'preview' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    Preview Output
+                  </button>
                 </div>
                 <p className="text-[0.66rem] text-gray-400 pb-1.5">Fill in case details below. Values auto-populate into all documents.</p>
                 <input
@@ -870,7 +886,7 @@ export default function WorkspaceScreen() {
   );
 }
 
-function ImportedDocView({ doc, template, variables, onInsertVariable, onContentChange }) {
+function ImportedDocView({ doc, template, variables, mode, onInsertVariable, onContentChange }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState('');
   const [varPopup, setVarPopup] = useState(null);
@@ -884,6 +900,7 @@ function ImportedDocView({ doc, template, variables, onInsertVariable, onContent
   const previewName = doc.name || template?.name || 'Document';
   const hasVisualPdf = previewFileType === 'pdf' && !!previewSourceDataUrl;
   const canEditExtractedText = doc.imported && !!doc.importedContent && !sourceHtml;
+  const isPreviewMode = mode === 'preview';
 
   function handleStartEdit() {
     if (!canEditExtractedText) return;
@@ -968,8 +985,10 @@ function ImportedDocView({ doc, template, variables, onInsertVariable, onContent
 
       {hasVisualPdf ? (
         <>
-          <div className="mb-4 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-[0.72rem] text-green-700">
-            PDF preview is rendered from the original file so it matches the filed document layout.
+          <div className={`mb-4 px-3 py-2 border rounded-lg text-[0.72rem] ${isPreviewMode ? 'bg-green-50 border-green-200 text-green-700' : 'bg-blue-50 border-blue-200 text-blue-700'}`}>
+            {isPreviewMode
+              ? 'Preview mode shows rendered output from the original PDF layout.'
+              : 'Fill mode keeps the original PDF layout visible while you edit values in the fields panel.'}
           </div>
           <iframe
             src={previewSourceDataUrl}
@@ -980,25 +999,31 @@ function ImportedDocView({ doc, template, variables, onInsertVariable, onContent
       ) : (
         <>
           {/* Tip for making variables */}
-          <div className="mb-4 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-[0.72rem] text-blue-700">
-            Select any text to convert it into a variable placeholder. Variables auto-fill across all documents.
-          </div>
+          {isPreviewMode ? (
+            <div className="mb-4 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-[0.72rem] text-green-700">
+              Preview output mode shows values as they would appear in the exported document.
+            </div>
+          ) : (
+            <div className="mb-4 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-[0.72rem] text-blue-700">
+              Select any text to convert it into a variable placeholder. Variables auto-fill across all documents.
+            </div>
+          )}
 
           {/* Document content with variable highlighting */}
           <div
             ref={contentRef}
             className="relative text-[0.88rem] leading-[1.8] text-gray-900"
             style={{ fontFamily: "'Source Serif 4', serif" }}
-            onMouseUp={!sourceHtml ? handleTextSelect : undefined}
+            onMouseUp={!sourceHtml && !isPreviewMode ? handleTextSelect : undefined}
           >
             {sourceHtml ? (
               <div dangerouslySetInnerHTML={{ __html: safeHtml(substituteVarsInHtml(sourceHtml, variables)) }} />
             ) : (
-              <div className="whitespace-pre-wrap">{renderContent(content, variables)}</div>
+              <div className="whitespace-pre-wrap">{renderContent(content, variables, {}, isPreviewMode)}</div>
             )}
 
             {/* Variable creation popup */}
-            {varPopup && (
+            {varPopup && !isPreviewMode && (
               <div
                 className="absolute z-20 bg-white border border-gray-200 rounded-lg shadow-xl p-3 w-64"
                 style={{ top: varPopup.top, left: Math.max(0, varPopup.left - 128) }}
@@ -1116,7 +1141,7 @@ function formatLabel(key) {
     .replace(/^Ausa /, 'AUSA ');
 }
 
-function renderContent(content, variables, layout = {}) {
+function renderContent(content, variables, layout = {}, previewOnly = false) {
   if (!content) return null;
   const paragraphSpacing = Number(layout.paragraphSpacing ?? DEFAULT_SECTION_LAYOUT.paragraphSpacing);
   const paragraphs = content.split(/\n{2,}/).filter(p => p.trim().length > 0);
@@ -1130,6 +1155,9 @@ function renderContent(content, variables, layout = {}) {
           const match = part.match(/^\{\{([A-Z_0-9]+)\}\}$/);
           if (match) {
             const val = variables[match[1]];
+            if (previewOnly) {
+              return <span key={`${paraIdx}-${i}`}>{val || `{{${match[1]}}}`}</span>;
+            }
             return (
               <span key={`${paraIdx}-${i}`} className={val ? 'bg-green-50 border-b-2 border-green-300 px-[5px] rounded cursor-pointer hover:bg-green-100' : 'bg-amber-50 border-b-2 border-amber-300 px-[5px] rounded font-mono text-[0.78rem] text-amber-500 cursor-pointer hover:bg-amber-100'}>
                 {val || `{{${match[1]}}}`}
