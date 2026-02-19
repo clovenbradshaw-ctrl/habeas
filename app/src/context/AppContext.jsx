@@ -891,8 +891,13 @@ async function loadRemoteData(dispatch, role) {
         };
 
         if (seedTemplate.id === 'tpl_hc_general') {
-          merged.sourceHtml = seedTemplate.sourceHtml;
-          merged.renderMode = seedTemplate.renderMode;
+          // Keep the primary habeas petition template fully canonical for all users.
+          Object.assign(merged, {
+            ...seedTemplate,
+            archived: false,
+            docs: merged.docs ?? seedTemplate.docs,
+            lastUsed: merged.lastUsed ?? seedTemplate.lastUsed,
+          });
         }
 
         existing.set(seedTemplate.id, merged);
