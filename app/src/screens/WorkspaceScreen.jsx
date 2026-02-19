@@ -1164,7 +1164,10 @@ function evaluateCondition(condition, variables) {
 
 
 function substituteVarsInHtml(html, vars) {
-  return (html || '').replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, k) => (vars[k] ?? `[${k}]`));
+  return (html || '').replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, k) => {
+    const value = vars[k];
+    return value == null || value === '' ? `{{${k}}}` : value;
+  });
 }
 
 function safeHtml(html) {
@@ -1181,7 +1184,7 @@ function safeHtml(html) {
 function buildDocText(doc, variables, template) {
   if (doc.imported && (doc.sourceText || doc.importedContent)) {
     const text = doc.sourceText || doc.importedContent || '';
-    return text.replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => variables[key] || `[${key}]`);
+    return text.replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => variables[key] || `{{${key}}}`);
   }
   if (!template) return '';
   let text = '';
@@ -1189,7 +1192,7 @@ function buildDocText(doc, variables, template) {
     if (!sec.required && sec.condition && !evaluateCondition(sec.condition, variables)) continue;
     text += `\n${'='.repeat(60)}\n  ${sec.name.toUpperCase()}\n${'='.repeat(60)}\n\n`;
     if (sec.content) {
-      text += sec.content.replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => variables[key] || `[${key}]`);
+      text += sec.content.replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => variables[key] || `{{${key}}}`);
     }
     text += '\n\n';
   }
@@ -1207,7 +1210,7 @@ function escapeHtml(text) {
 
 function renderImportedBodyHtml(content, variables, layout = DEFAULT_SECTION_LAYOUT) {
   const substituted = (content || '')
-    .replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => (variables[key] ?? `[${key}]`));
+    .replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => (variables[key] == null || variables[key] === '' ? `{{${key}}}` : variables[key]));
 
   // Escape HTML, then convert newlines into basic document structure:
   // - blank lines => paragraph breaks
