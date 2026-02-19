@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectSections, extractVariables, extractTextFromMarkdown, extractFromMarkdown, stripHtmlToText } from './fileImport';
+import { detectSections, extractVariables, buildTemplateFields, extractTextFromMarkdown, extractFromMarkdown, stripHtmlToText } from './fileImport';
 
 // ── detectSections ──
 
@@ -453,5 +453,32 @@ describe('stripHtmlToText', () => {
   it('converts simple html to plain text', () => {
     const html = '<div><p>Hello&nbsp;{{NAME}}</p><p>Line &amp; More</p></div>';
     expect(stripHtmlToText(html)).toBe('Hello {{NAME}}\n\nLine & More');
+  });
+});
+
+
+describe('buildTemplateFields', () => {
+  it('builds DOCX extracted field metadata from variable keys', () => {
+    const fields = buildTemplateFields(['PETITIONER_NAME', 'A_NUMBER']);
+    expect(fields).toEqual([
+      {
+        key: 'PETITIONER_NAME',
+        type: 'string',
+        required: false,
+        label: 'PETITIONER NAME',
+        help_text: '',
+        default_value: '',
+        source: 'extracted_from_docx',
+      },
+      {
+        key: 'A_NUMBER',
+        type: 'string',
+        required: false,
+        label: 'A NUMBER',
+        help_text: '',
+        default_value: '',
+        source: 'extracted_from_docx',
+      },
+    ]);
   });
 });
