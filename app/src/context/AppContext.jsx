@@ -956,9 +956,10 @@ function extractTemplateVariableKeys(template) {
   const sectionVariables = (template.sections || []).flatMap((section) =>
     Array.from((section.content || '').matchAll(/\{\{([A-Z_0-9]+)\}\}/g)).map((match) => match[1]),
   );
+  const fieldVariables = (template.fields || []).map((field) => field.key).filter(Boolean);
   const htmlVariables = Array.from((template.sourceHtml || '').matchAll(/\{\{([A-Z_0-9]+)\}\}/g)).map((match) => match[1]);
   const textVariables = Array.from((template.sourceText || '').matchAll(/\{\{([A-Z_0-9]+)\}\}/g)).map((match) => match[1]);
-  return Array.from(new Set([...(template.variables || []), ...sectionVariables, ...htmlVariables, ...textVariables]));
+  return Array.from(new Set([...(template.variables || []), ...fieldVariables, ...sectionVariables, ...htmlVariables, ...textVariables]));
 }
 
 function buildVariableRecordFromTemplate(template) {

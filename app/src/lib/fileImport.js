@@ -322,6 +322,18 @@ export function extractVariables(text) {
   return Array.from(vars).sort();
 }
 
+export function buildTemplateFields(variableKeys = []) {
+  return variableKeys.map((key) => ({
+    key,
+    type: 'string',
+    required: false,
+    label: key.replace(/_/g, ' '),
+    help_text: '',
+    default_value: '',
+    source: 'extracted_from_docx',
+  }));
+}
+
 // ── Format-specific parsers ──
 
 /**
@@ -825,152 +837,29 @@ function detectMarkdownSections(text) {
 export async function importTemplate(file, templateMeta = {}, opts = {}) {
   const meta = { ...(templateMeta || {}), ...(opts || {}) };
   const fileType = getFileType(file);
-  if (!fileType) {
-    throw new Error(`Unsupported file type: ${file.name}. Supported: PDF, DOCX, JSON, MD, TXT`);
+  if (fileType !== 'docx') {
+    throw new Error(`Unsupported file type: ${file.name}. Only DOCX templates are supported.`);
   }
 
   const fileName = file.name.replace(/\.[^.]+$/, '');
-  let sections = [];
-  const renderMode = meta.renderMode || null;
-  let resolvedTemplateMeta = {
+  const { text } = await extractFromDOCX(file);
+  const variables = extractVariables(text);
+  const detectedSections = detectSections(text);
+  const sections = detectedSections.length > 0 ? detectedSections : chunkText(text);
+
+  return {
     name: meta.name || fileName,
     category: meta.category || 'petition',
     desc: meta.desc || `Imported from ${file.name}`,
-  };
-  let sourceDataUrl = null;
-  let sourceFileType = null;
-
-  switch (fileType) {
-    case 'json': {
-      const result = await parseTemplateJSON(file);
-      if (result.type === 'native') {
-        // Native JSON template: use sections directly
-        resolvedTemplateMeta.name = meta.name || result.template.name;
-        resolvedTemplateMeta.category = meta.category || result.template.category;
-        resolvedTemplateMeta.desc = meta.desc || result.template.desc || resolvedTemplateMeta.desc;
-        return {
-          name: resolvedTemplateMeta.name,
-          category: resolvedTemplateMeta.category,
-          desc: resolvedTemplateMeta.desc,
-          sections: result.template.sections,
-          variables: result.template.variables,
-          sourceHtml: null,
-          sourceText: result.template.sections.map(s => s.content).join('\n\n'),
-          renderMode: 'html_semantic',
-        };
-      }
-      // Flat JSON: run section detection on the content
-      resolvedTemplateMeta.name = meta.name || result.metadata.name;
-      resolvedTemplateMeta.category = meta.category || result.metadata.category;
-      resolvedTemplateMeta.desc = meta.desc || result.metadata.desc || resolvedTemplateMeta.desc;
-      sections = detectSections(result.text);
-      if (sections.length === 0) {
-        console.warn('No headings detected in JSON content, falling back to chunking');
-        sections = chunkText(result.text);
-      }
-      break;
-    }
-
-    case 'md': {
-      const raw = await readAsText(file);
-      const { html, text, metadata } = await extractFromMarkdown(raw);
-      resolvedTemplateMeta.name = meta.name || metadata.name || fileName;
-      resolvedTemplateMeta.category = meta.category || metadata.category || 'petition';
-      resolvedTemplateMeta.desc = meta.desc || metadata.desc || resolvedTemplateMeta.desc;
-      resolvedTemplateMeta.sourceHtml = html;
-      resolvedTemplateMeta.sourceText = text;
-      resolvedTemplateMeta.renderMode = 'html_semantic';
-      sourceFileType = 'md';
-
-      // Try Markdown headings first
-      const mdSections = detectMarkdownSections(text);
-      if (mdSections && mdSections.length > 0) {
-        sections = mdSections;
-      } else {
-        // Fall back to legal heading detection
-        sections = detectSections(text);
-        if (sections.length === 0) {
-          console.warn('No headings detected in Markdown, falling back to chunking');
-          sections = chunkText(text);
-        }
-      }
-      break;
-    }
-
-    case 'pdf': {
-      const { metadata } = await extractTextFromPDF(file);
-      resolvedTemplateMeta.name = meta.name || metadata.name || fileName;
-      if (metadata.author) resolvedTemplateMeta.desc = meta.desc || `By ${metadata.author}`;
-      sourceDataUrl = await readAsDataURL(file);
-      sourceFileType = 'pdf';
-
-      if (renderMode === 'pdf_positioned') {
-        const { html, text } = await extractFromPDFPositionedHtml(file);
-        resolvedTemplateMeta.sourceHtml = html;
-        resolvedTemplateMeta.sourceText = text;
-        resolvedTemplateMeta.renderMode = 'pdf_positioned';
-      } else {
-        const { html, text } = await extractFromPDFReadingHtml(file);
-        resolvedTemplateMeta.sourceHtml = html;
-        resolvedTemplateMeta.sourceText = text;
-        resolvedTemplateMeta.renderMode = 'pdf_reading';
-      }
-
-      sections = detectSections(resolvedTemplateMeta.sourceText);
-      if (sections.length === 0) sections = chunkText(resolvedTemplateMeta.sourceText);
-      break;
-    }
-
-    case 'docx': {
-      const { html, text } = await extractFromDOCX(file);
-      resolvedTemplateMeta.sourceHtml = html;
-      resolvedTemplateMeta.sourceText = text;
-      resolvedTemplateMeta.renderMode = 'html_semantic';
-      sourceFileType = 'docx';
-      sections = detectSections(text);
-      if (sections.length === 0) {
-        console.warn('No headings detected in DOCX, falling back to chunking');
-        sections = chunkText(text);
-      }
-      break;
-    }
-
-    case 'txt': {
-      const text = await readAsText(file);
-      sections = detectSections(text);
-      if (sections.length === 0) {
-        console.warn('No headings detected in text file, falling back to chunking');
-        sections = chunkText(text);
-      }
-      break;
-    }
-
-    default:
-      throw new Error(`Unsupported file type: ${fileType}`);
-  }
-
-  // Ensure at least one section
-  if (sections.length === 0) {
-    sections = [buildSection('Content', '')];
-  }
-
-  // Extract variables from all section content
-  const variableSource = resolvedTemplateMeta.sourceText
-    || stripHtmlToText(resolvedTemplateMeta.sourceHtml || '')
-    || sections.map(s => s.content).join('\n\n');
-  const variables = extractVariables(variableSource);
-
-  return {
-    name: resolvedTemplateMeta.name,
-    category: resolvedTemplateMeta.category,
-    desc: resolvedTemplateMeta.desc,
     sections,
     variables,
-    sourceHtml: resolvedTemplateMeta.sourceHtml || null,
-    sourceText: resolvedTemplateMeta.sourceText || null,
-    renderMode: resolvedTemplateMeta.renderMode || 'html_semantic',
-    sourceDataUrl,
-    sourceFileType,
+    fields: buildTemplateFields(variables),
+    sourceText: text || null,
+    sourceHtml: null,
+    renderMode: 'docx_pdf',
+    sourceFileType: 'docx',
+    sourceDataUrl: null,
+    schemaVersion: 2,
   };
 }
 
