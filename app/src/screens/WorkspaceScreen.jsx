@@ -42,21 +42,33 @@ const VAR_TYPES = {
   COMMUNITY_TIES: { type: 'textarea', label: 'Community Ties' },
   CRIMINAL_HISTORY: { type: 'text', label: 'Criminal History' },
   ATTORNEY_1_PHONE: { type: 'tel', label: 'Attorney Phone' },
+  ATTORNEY_1_FAX: { type: 'tel', label: 'Attorney Fax' },
   ATTORNEY_1_EMAIL: { type: 'email', label: 'Attorney Email' },
+  ATTORNEY_1_CITY_STATE_ZIP: { type: 'text', label: 'Attorney City/State/Zip' },
   ATTORNEY_2_PHONE: { type: 'tel', label: 'Attorney 2 Phone' },
   ATTORNEY_2_EMAIL: { type: 'email', label: 'Attorney 2 Email' },
+  ATTORNEY_2_CITY_STATE_ZIP: { type: 'text', label: 'Attorney 2 City/State/Zip' },
+  ATTORNEY_2_PRO_HAC: { type: 'text', label: 'Pro Hac Vice Status' },
   AUSA_PHONE: { type: 'tel', label: 'AUSA Phone' },
   AUSA_EMAIL: { type: 'email', label: 'AUSA Email' },
+  ENTRY_METHOD: { type: 'text', label: 'Entry Method' },
+  FACILITY_CITY: { type: 'text', label: 'Facility City' },
+  FACILITY_STATE: { type: 'text', label: 'Facility State' },
+  ICE_DIRECTOR_TITLE: { type: 'text', label: 'ICE Director Title' },
+  FILING_DAY: { type: 'text', label: 'Filing Day' },
+  FILING_MONTH_YEAR: { type: 'text', label: 'Filing Month/Year' },
 };
 
 // Fields auto-populated by cascade (read-only)
 const CASCADE_FIELDS = new Set([
-  'DETENTION_FACILITY', 'FACILITY_LOCATION', 'FACILITY_OPERATOR',
+  'DETENTION_FACILITY', 'FACILITY_LOCATION', 'FACILITY_CITY', 'FACILITY_STATE', 'FACILITY_OPERATOR',
   'WARDEN_NAME', 'WARDEN_TITLE', 'DISTRICT_FULL', 'DIVISION',
   'COURT_LOCATION', 'COURT_ADDRESS', 'FOD_NAME', 'FIELD_OFFICE',
-  'FIELD_OFFICE_ADDRESS', 'ICE_DIRECTOR', 'ICE_DIRECTOR_ACTING',
+  'FIELD_OFFICE_ADDRESS', 'ICE_DIRECTOR', 'ICE_DIRECTOR_ACTING', 'ICE_DIRECTOR_TITLE',
   'DHS_SECRETARY', 'AG_NAME', 'JUDGE_NAME', 'JUDGE_TITLE', 'JUDGE_CODE',
 ]);
+
+const BUILT_IN_TEMPLATE_IDS = new Set(['tpl_hc_general']);
 
 export default function WorkspaceScreen() {
   const {
@@ -93,6 +105,18 @@ export default function WorkspaceScreen() {
       getCaseSharedUsers(activeCaseId).then(setSharedUsers);
     }
   }, [showSharePanel, activeCaseId, getCaseSharedUsers]);
+
+  // Auto-inject habeas petition document if missing from the case
+  useEffect(() => {
+    if (!activeCase) return;
+    const hasHabeasDoc = (activeCase.documents || []).some(d => d.templateId === 'tpl_hc_general');
+    if (!hasHabeasDoc) {
+      const defaultTemplate = state.templates.find(t => t.id === 'tpl_hc_general');
+      if (defaultTemplate) {
+        addDocToCase(activeCase.id, defaultTemplate);
+      }
+    }
+  }, [activeCase?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!activeCase) {
     return (
@@ -160,10 +184,15 @@ export default function WorkspaceScreen() {
     .filter(t => !t.archived)
     .sort((a, b) => (b.lastUsedAt || 0) - (a.lastUsedAt || 0))
     .slice(0, 4);
-  const requiredVarsForSelectedDoc = (!selectedDoc?.imported && docTemplate)
-    ? Array.from(new Set((docTemplate.sections || [])
-      .flatMap(section => Array.from((section.content || '').matchAll(/\{\{([A-Z_0-9]+)\}\}/g)).map(match => match[1]))))
-    : [];
+  const requiredVarsForSelectedDoc = useMemo(() => {
+    if (selectedDoc?.imported || !docTemplate) return [];
+    const sectionVars = (docTemplate.sections || [])
+      .flatMap(section => Array.from((section.content || '').matchAll(/\{\{([A-Z_0-9]+)\}\}/g)).map(m => m[1]));
+    const htmlVars = docTemplate.sourceHtml
+      ? Array.from(docTemplate.sourceHtml.matchAll(/\{\{([A-Z_0-9]+)\}\}/g)).map(m => m[1])
+      : [];
+    return Array.from(new Set([...sectionVars, ...htmlVars]));
+  }, [selectedDoc?.imported, docTemplate]);
   const missingRequiredVars = requiredVarsForSelectedDoc.filter(k => !effectiveVars[k] || !String(effectiveVars[k]).trim());
 
   // Variable groups
@@ -556,6 +585,7 @@ export default function WorkspaceScreen() {
                     {d.status === 'review' && docCommentCount > 0 && ` \u00b7 ${docCommentCount} comment${docCommentCount !== 1 ? 's' : ''}`}
                   </div>
                 </div>
+                {d.templateId !== 'tpl_hc_general' && (
                 <button
                   onClick={(e) => { e.stopPropagation(); setConfirmRemoveDoc(d.id); }}
                   className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all flex-shrink-0"
@@ -563,6 +593,7 @@ export default function WorkspaceScreen() {
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
+                )}
                 {isSelected && !confirmRemoveDoc && <span className="text-blue-400 text-[0.7rem]">&rsaquo;</span>}
               </div>
             );
@@ -645,6 +676,7 @@ export default function WorkspaceScreen() {
               template={docTemplate}
               variables={effectiveVars}
               mode={docViewMode}
+              trusted={!!docTemplate && BUILT_IN_TEMPLATE_IDS.has(docTemplate.id)}
               onInsertVariable={handleInsertVariable}
               onContentChange={(content) => updateDocContent(activeCase.id, selectedDoc.id, content)}
             />
@@ -886,7 +918,7 @@ export default function WorkspaceScreen() {
   );
 }
 
-function ImportedDocView({ doc, template, variables, mode, onInsertVariable, onContentChange }) {
+function ImportedDocView({ doc, template, variables, mode, trusted, onInsertVariable, onContentChange }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState('');
   const [varPopup, setVarPopup] = useState(null);
@@ -1017,7 +1049,7 @@ function ImportedDocView({ doc, template, variables, mode, onInsertVariable, onC
             onMouseUp={!sourceHtml && !isPreviewMode ? handleTextSelect : undefined}
           >
             {sourceHtml ? (
-              <div dangerouslySetInnerHTML={{ __html: safeHtml(substituteVarsInHtml(sourceHtml, variables)) }} />
+              <div dangerouslySetInnerHTML={{ __html: (trusted ? safeTrustedHtml : safeHtml)(substituteVarsInHtml(sourceHtml, variables)) }} />
             ) : (
               <div className="whitespace-pre-wrap">{renderContent(content, variables, {}, isPreviewMode)}</div>
             )}
@@ -1209,6 +1241,31 @@ function safeHtml(html) {
   return doc.body.innerHTML;
 }
 
+// Trusted HTML sanitizer that preserves <style> tags for built-in templates.
+// Styles are scoped to prevent leaking into the rest of the application.
+function safeTrustedHtml(html) {
+  const doc = new DOMParser().parseFromString(html || '', 'text/html');
+  doc.querySelectorAll('script,iframe,object').forEach((el) => el.remove());
+  doc.querySelectorAll('*').forEach((el) => {
+    Array.from(el.attributes).forEach((attr) => {
+      if (/^on/i.test(attr.name)) el.removeAttribute(attr.name);
+    });
+  });
+  // Extract styles and scope them to avoid leaking into the app
+  const scopeClass = 'hc-petition-scope';
+  const styles = Array.from(doc.querySelectorAll('style'));
+  const scopedCss = styles.map((s) => {
+    return s.textContent.replace(/([^{}]+)\{/g, (match, selector) => {
+      if (selector.trim().startsWith('@')) return match;
+      const scoped = selector.split(',').map((sel) => `.${scopeClass} ${sel.trim()}`).join(', ');
+      return `${scoped} {`;
+    });
+  }).join('\n');
+  // Remove original style elements from body (they were in head, but just in case)
+  doc.body.querySelectorAll('style').forEach((el) => el.remove());
+  return `<style>${scopedCss}</style><div class="${scopeClass}">${doc.body.innerHTML}</div>`;
+}
+
 function buildDocText(doc, variables, template) {
   if (doc.imported && (doc.sourceText || doc.importedContent)) {
     const text = doc.sourceText || doc.importedContent || '';
@@ -1265,7 +1322,10 @@ function buildDocHtml(doc, variables, template) {
       : safeHtml(renderImportedBodyHtml(doc.importedContent || '', variables, DEFAULT_SECTION_LAYOUT));
     body = `<div style="font-family:'Times New Roman',serif;font-size:12pt;line-height:1.8;">${importedHtml}</div>`;
   } else if (template) {
-    if (template.sourceHtml) {
+    if (template.sourceHtml && BUILT_IN_TEMPLATE_IDS.has(template.id)) {
+      // Built-in template: use full original HTML with styles preserved
+      return substituteVarsInHtml(template.sourceHtml, variables);
+    } else if (template.sourceHtml) {
       const substituted = safeHtml(substituteVarsInHtml(template.sourceHtml, variables));
       body = `<div style="font-family:'Times New Roman',serif;font-size:12pt;line-height:1.8;">${substituted}</div>`;
     } else {
@@ -1358,15 +1418,24 @@ h2{font-size:11pt;text-align:center;text-transform:uppercase;letter-spacing:1px;
         : safeHtml(renderImportedBodyHtml(doc.importedContent || '', effectiveVars, DEFAULT_SECTION_LAYOUT));
       combinedHtml += `<div>${rendered}</div>`;
     } else if (template) {
-      for (const sec of template.sections || []) {
-        if (!sec.required && sec.condition && !evaluateCondition(sec.condition, effectiveVars)) continue;
-        const secLayout = { ...DEFAULT_SECTION_LAYOUT, ...(sec.layout || {}) };
-        combinedHtml += `<h2 style="text-align:${secLayout.sectionTitleAlign};font-family:${secLayout.fontFamily};">${sec.name}</h2>`;
-        if (sec.content) {
-          const rendered = sec.content
-            .replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => effectiveVars[key] || `[${key}]`)
-            .replace(/\n/g, '<br/>');
-          combinedHtml += `<div style="font-family:${secLayout.fontFamily};font-size:${secLayout.fontSize}px;line-height:${secLayout.lineHeight};text-align:${secLayout.textAlign};margin-bottom:${secLayout.paragraphSpacing}px;">${rendered}</div>`;
+      if (template.sourceHtml && BUILT_IN_TEMPLATE_IDS.has(template.id)) {
+        // Built-in template: use full original HTML with styles preserved
+        const substituted = substituteVarsInHtml(template.sourceHtml, effectiveVars);
+        // Extract just the body content for embedding in the combined document
+        const parsed = new DOMParser().parseFromString(substituted, 'text/html');
+        const styles = Array.from(parsed.querySelectorAll('style')).map(s => s.outerHTML).join('');
+        combinedHtml += `${styles}<div>${parsed.body.innerHTML}</div>`;
+      } else {
+        for (const sec of template.sections || []) {
+          if (!sec.required && sec.condition && !evaluateCondition(sec.condition, effectiveVars)) continue;
+          const secLayout = { ...DEFAULT_SECTION_LAYOUT, ...(sec.layout || {}) };
+          combinedHtml += `<h2 style="text-align:${secLayout.sectionTitleAlign};font-family:${secLayout.fontFamily};">${sec.name}</h2>`;
+          if (sec.content) {
+            const rendered = sec.content
+              .replace(/\{\{([A-Z_0-9]+)\}\}/g, (_, key) => effectiveVars[key] || `[${key}]`)
+              .replace(/\n/g, '<br/>');
+            combinedHtml += `<div style="font-family:${secLayout.fontFamily};font-size:${secLayout.fontSize}px;line-height:${secLayout.lineHeight};text-align:${secLayout.textAlign};margin-bottom:${secLayout.paragraphSpacing}px;">${rendered}</div>`;
+          }
         }
       }
     }
