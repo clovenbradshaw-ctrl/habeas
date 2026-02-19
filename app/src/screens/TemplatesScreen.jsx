@@ -94,6 +94,7 @@ export default function TemplatesScreen() {
   }
 
   async function handleDeleteTemplate(tplId) {
+    if (BUILT_IN_TEMPLATE_IDS.has(tplId)) return;
     if (!confirm('Delete this template? This cannot be undone.')) return;
     await deleteTemplate(tplId);
     showToast('Template deleted');
